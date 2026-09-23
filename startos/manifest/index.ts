@@ -1,17 +1,17 @@
 import { setupManifest } from '@start9labs/start-sdk'
-import { START_CLI_VERSION } from '../utils'
+import { START_CLI_VERSION, QDRANT_VERSION } from '../utils'
 import { long, short } from './i18n'
 
 export const manifest = setupManifest({
   id: 'openclaw',
   title: 'OpenClaw',
   license: 'MIT',
-  packageRepo: 'https://github.com/Start9-Community/openclaw-startos',
+  packageRepo: 'https://github.com/usuallymark/openclaw-startos',
   upstreamRepo: 'https://github.com/openclaw/openclaw',
   marketingUrl: 'https://github.com/openclaw/openclaw',
   donationUrl: null,
   description: { short, long },
-  volumes: ['main'],
+  volumes: ['main', 'qdrant'],
   images: {
     openclaw: {
       source: {
@@ -20,6 +20,17 @@ export const manifest = setupManifest({
           buildArgs: {
             START_CLI_VERSION,
           },
+        },
+      },
+      arch: ['x86_64', 'aarch64'],
+    },
+    qdrant: {
+      source: {
+        dockerTag: {
+          // Pinned by tag; bump QDRANT_VERSION in utils.ts to upgrade.
+          // To pin by digest instead: use dockerBuild with a single-line
+          // qdrant.Dockerfile that pins the digest via FROM qdrant/qdrant@sha256:...
+          tag: `qdrant/qdrant:${QDRANT_VERSION}`,
         },
       },
       arch: ['x86_64', 'aarch64'],

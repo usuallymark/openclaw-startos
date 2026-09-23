@@ -3,15 +3,29 @@ import * as fs from 'node:fs/promises'
 import { sdk } from './sdk'
 
 export const uiPort = 18789
+export const qdrantPort = 6333
 
 // start-cli release whose binary the image installs (see UPDATING.md).
 export const START_CLI_VERSION = '1.1.0'
+
+// Qdrant version pinned here so it is visible alongside openclaw's version pin
+// in the Dockerfile. Bump both together when upgrading.
+export const QDRANT_VERSION = 'v1.18.2'
 
 export function mainMounts() {
   return sdk.Mounts.of().mountVolume({
     volumeId: 'main',
     subpath: null,
     mountpoint: '/data',
+    readonly: false,
+  })
+}
+
+export function qdrantMounts() {
+  return sdk.Mounts.of().mountVolume({
+    volumeId: 'qdrant',
+    subpath: null,
+    mountpoint: '/qdrant/storage',
     readonly: false,
   })
 }

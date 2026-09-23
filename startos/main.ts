@@ -6,7 +6,7 @@ import { startCliConfigYaml } from './fileModels/startCliConfig.yaml'
 import { i18n } from './i18n'
 import { uiHostId, uiInterfaceId } from './interfaces'
 import { sdk } from './sdk'
-import { mainMounts, uiPort } from './utils'
+import { mainMounts, qdrantMounts, uiPort, qdrantPort } from './utils'
 import { watchSimplexAddress, withSimplexMounts } from './simplex'
 import { requestSimplexPluginUpgrade } from './actions/configureSimplex'
 
@@ -90,6 +90,17 @@ export const main = sdk.setupMain(async ({ effects }) => {
     'openclaw-sub',
   )
 
+  // Qdrant runs as a sibling subcontainer in the same network namespace.
+  // OpenClaw reaches it at http://localhost:6333 (loopback, no auth needed
+  // from inside the package). The qdrant volume holds all collection data and
+  // snapshots and is backed up independently of the main volume.
+  const qdrantSub = sdk.SubContainer.of(
+    effects,
+    { imageId: 'qdrant' },
+    qdrantMounts(),
+    'qdrant-sub',
+  )
+
   return (
     sdk.Daemons.of(effects)
       .addOneshot('install-root-ca', {
@@ -113,6 +124,32 @@ export const main = sdk.setupMain(async ({ effects }) => {
         },
         requires: [],
       })
+      // Qdrant daemon — starts before openclaw so the vector DB is ready when
+      // the gateway begins accepting connections. Qdrant has no auth inside the
+      // package network namespace; the API key is only needed for external
+      // access, which is not exposed here.
+      .addDaemon('qdrant', {
+        subcontainer: qdrantSub,
+        exec: {
+          command: ['./qdrant'],
+          user: 'root',
+          env: {
+            QDRANT__STORAGE__STORAGE_PATH: '/qdrant/storage',
+            QDRANT__SERVICE__HTTP_PORT: qdrantPort.toString(),
+            QDRANT__LOG_LEVEL: 'INFO',
+          },
+        },
+        ready: {
+          display: i18n('Qdrant Vector Database'),
+          fn: () =>
+            sdk.healthCheck.checkPortListening(effects, qdrantPort, {
+              successMessage: i18n('Qdrant is ready'),
+              errorMessage: i18n('Qdrant is not ready'),
+            }),
+          gracePeriod: 30_000,
+        },
+        requires: [],
+      })
       .addDaemon('primary', {
         subcontainer: openclawSub,
         exec: {
@@ -131,6 +168,8 @@ export const main = sdk.setupMain(async ({ effects }) => {
             HOME: '/data',
             OPENCLAW_STATE_DIR: '/data/.openclaw',
             NODE_EXTRA_CA_CERTS: '/etc/ssl/certs/ca-certificates.crt',
+            // Qdrant is reachable on loopback — same network namespace.
+            QDRANT_URL: `http://localhost:${qdrantPort}`,
             ...providerKeyEnv,
           },
         },
@@ -148,7 +187,7 @@ export const main = sdk.setupMain(async ({ effects }) => {
                 }),
           gracePeriod: 40_000,
         },
-        requires: ['install-root-ca', 'chown'],
+        requires: ['install-root-ca', 'chown', 'qdrant'],
       })
       .addOneshot('check-login', {
         subcontainer: openclawSub,

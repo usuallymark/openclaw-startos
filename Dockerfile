@@ -34,6 +34,18 @@ RUN mkdir -p /opt/openclaw-home && \
 RUN curl -fsSL "https://github.com/Start9Labs/start-technologies/releases/download/start-cli%2Fv${START_CLI_VERSION}/start-cli_$(uname -m)-linux" -o /usr/local/bin/start-cli \
     && chmod +x /usr/local/bin/start-cli
 
+# Install rbw (Vaultwarden CLI) for credential retrieval at runtime.
+# rbw is used by Alfred's skills to fetch secrets from Vaultwarden on Tanto.
+# The binary is installed system-wide; runtime configuration (XDG dirs, vault
+# URL) is handled by the workspace's rbw-get.sh wrapper, not here.
+RUN ARCH="$(dpkg --print-architecture)" && \
+    if [ "$ARCH" = "amd64" ]; then RBW_ARCH="amd64"; \
+    elif [ "$ARCH" = "arm64" ]; then RBW_ARCH="arm64"; \
+    else echo "Unsupported arch: $ARCH" && exit 1; fi && \
+    curl -fsSL "https://git.tozt.net/rbw/releases/deb/rbw_1.15.0_${RBW_ARCH}.deb" -o /tmp/rbw.deb && \
+    dpkg -i /tmp/rbw.deb && \
+    rm /tmp/rbw.deb
+
 # Stage skill files (loaded via extraDirs in openclaw.json)
 COPY skills/start-cli/SKILL.md /opt/skills/start-cli/SKILL.md
 
