@@ -39,6 +39,12 @@ jobs:
           chmod +x /usr/local/bin/start-cli
           start-cli --version
 
+      - name: Initialize packaging workspace
+        run: |
+          cd ..
+          start-cli s9pk init-workspace
+          cd openclaw-startos
+
       - name: Build s9pk
         env:
           DEV_KEY: ${{ secrets.DEV_KEY }}
