@@ -32,6 +32,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install start-cli
+        run: |
+          curl -fsSL "https://github.com/Start9Labs/start-technologies/releases/download/start-cli%2Fv1.1.0/start-cli_x86_64-linux" \
+            -o /usr/local/bin/start-cli
+          chmod +x /usr/local/bin/start-cli
+          start-cli --version
+
       - name: Build s9pk
         env:
           DEV_KEY: ${{ secrets.DEV_KEY }}
