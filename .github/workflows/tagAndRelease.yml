@@ -32,6 +32,13 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y squashfs-tools
+          which tar2sqfs || (echo "tar2sqfs not in squashfs-tools, trying squashfs-tools-ng" && sudo apt-get install -y squashfs-tools-ng)
+          which mksquashfs tar2sqfs 2>/dev/null || true
+
       - name: Install dependencies
         run: npm ci
 
