@@ -44,10 +44,7 @@ jobs:
           cd ..
           start-cli s9pk init-workspace
           mkdir -p .startos
-          cat > .startos/config.yaml << 'YAML'
-host: https://localhost
-YAML
-          echo "Config written:"
+          echo "host: https://localhost" > .startos/config.yaml
           cat .startos/config.yaml
 
       - name: Build s9pk
