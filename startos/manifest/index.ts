@@ -25,14 +25,7 @@ export const manifest = setupManifest({
       arch: ['x86_64', 'aarch64'],
     },
     qdrant: {
-      source: {
-        dockerTag: {
-          // Pinned by tag; bump QDRANT_VERSION in utils.ts to upgrade.
-          // To pin by digest instead: use dockerBuild with a single-line
-          // qdrant.Dockerfile that pins the digest via FROM qdrant/qdrant@sha256:...
-          tag: `qdrant/qdrant:${QDRANT_VERSION}`,
-        },
-      },
+      source: { dockerTag: `qdrant/qdrant:${QDRANT_VERSION}` },
       arch: ['x86_64', 'aarch64'],
     },
   },

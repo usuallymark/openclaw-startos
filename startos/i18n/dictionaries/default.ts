@@ -148,6 +148,11 @@ const dict = {
   'Pairing approved': 115,
   'The Web UI reconnects on its own; reload it if it does not.': 116,
   Approved: 117,
+
+  // main.ts — Qdrant
+  'Qdrant Vector Database': 118,
+  'Qdrant is ready': 119,
+  'Qdrant is not ready': 120,
 } as const
 
 /**

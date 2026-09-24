@@ -120,6 +120,9 @@ export default {
     115: 'Emparejamiento aprobado',
     116: 'La interfaz web se reconecta sola; recárgala si no lo hace.',
     117: 'Aprobados',
+    118: 'Qdrant Vector Database',
+    119: 'Qdrant is ready',
+    120: 'Qdrant is not ready',
   },
   de_DE: {
     0: 'Starte OpenClaw Gateway!',
@@ -240,6 +243,9 @@ export default {
     115: 'Kopplung genehmigt',
     116: 'Die Web-Oberfläche verbindet sich von selbst neu; laden Sie sie andernfalls neu.',
     117: 'Genehmigt',
+    118: 'Qdrant Vector Database',
+    119: 'Qdrant is ready',
+    120: 'Qdrant is not ready',
   },
   pl_PL: {
     0: 'Uruchamianie OpenClaw Gateway!',
@@ -360,6 +366,9 @@ export default {
     115: 'Parowanie zatwierdzone',
     116: 'Interfejs WWW połączy się ponownie sam; jeśli nie, odśwież go.',
     117: 'Zatwierdzono',
+    118: 'Qdrant Vector Database',
+    119: 'Qdrant is ready',
+    120: 'Qdrant is not ready',
   },
   fr_FR: {
     0: 'Démarrage de OpenClaw Gateway !',
@@ -480,5 +489,8 @@ export default {
     115: 'Appairage approuvé',
     116: "L'interface web se reconnecte d'elle-même ; rechargez-la sinon.",
     117: 'Approuvés',
+    118: 'Qdrant Vector Database',
+    119: 'Qdrant is ready',
+    120: 'Qdrant is not ready',
   },
 } satisfies Record<string, LangDict>
