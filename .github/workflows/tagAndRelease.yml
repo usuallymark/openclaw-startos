@@ -43,7 +43,13 @@ jobs:
         run: |
           cd ..
           start-cli s9pk init-workspace
-          cd openclaw-startos
+          echo "=== Workspace files created ==="
+          find . -maxdepth 2 -name "*.yaml" -o -name "*.yml" -o -name "*.toml" -o -name "*.json" 2>/dev/null | grep -v node_modules | grep -v ".git"
+          echo "=== Startos config ==="
+          find ~/.startos -type f 2>/dev/null | xargs ls -la 2>/dev/null || echo "no ~/.startos files"
+          cat ~/.startos/config.yaml 2>/dev/null || echo "no config.yaml"
+          echo "=== Parent dir files ==="
+          ls -la .
 
       - name: Build s9pk
         env:
