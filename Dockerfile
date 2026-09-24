@@ -47,7 +47,7 @@ RUN ARCH="$(dpkg --print-architecture)" && \
         dpkg -i /tmp/rbw.deb && \
         rm /tmp/rbw.deb; \
     elif [ "$ARCH" = "arm64" ]; then \
-        apt-get update && apt-get install -y --no-install-recommends curl libssl-dev pkg-config gcc && \
+        apt-get update && apt-get install -y --no-install-recommends curl libssl-dev pkg-config gcc libc6-dev && \
         rm -rf /var/lib/apt/lists/* && \
         export CARGO_HOME=/tmp/cargo RUSTUP_HOME=/tmp/rustup PATH="/tmp/cargo/bin:$PATH" && \
         curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --no-modify-path && \
