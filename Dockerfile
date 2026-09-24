@@ -43,8 +43,10 @@ RUN ARCH="$(dpkg --print-architecture)" && \
     elif [ "$ARCH" = "arm64" ]; then RBW_ARCH="arm64"; \
     else echo "Unsupported arch: $ARCH" && exit 1; fi && \
     curl -fsSL "https://git.tozt.net/rbw/releases/deb/rbw_1.15.0_${RBW_ARCH}.deb" -o /tmp/rbw.deb && \
+    apt-get install -y --no-install-recommends pinentry-curses && \
     dpkg -i /tmp/rbw.deb && \
-    rm /tmp/rbw.deb
+    rm /tmp/rbw.deb && \
+    rm -rf /var/lib/apt/lists/*
 
 # Stage skill files (loaded via extraDirs in openclaw.json)
 COPY skills/start-cli/SKILL.md /opt/skills/start-cli/SKILL.md
