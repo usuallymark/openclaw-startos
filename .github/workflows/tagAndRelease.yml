@@ -29,6 +29,9 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Install dependencies
         run: npm ci
 
@@ -45,7 +48,6 @@ jobs:
           start-cli s9pk init-workspace
           mkdir -p .startos
           echo "host: https://localhost" > .startos/config.yaml
-          cat .startos/config.yaml
 
       - name: Build s9pk
         env:
