@@ -49,10 +49,10 @@ RUN ARCH="$(dpkg --print-architecture)" && \
     elif [ "$ARCH" = "arm64" ]; then \
         apt-get update && apt-get install -y --no-install-recommends curl libssl-dev pkg-config gcc && \
         rm -rf /var/lib/apt/lists/* && \
-        curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && \
-        . /root/.cargo/env && \
-        cargo install rbw --version 1.15.0 --root /usr/local && \
-        rm -rf /root/.cargo/registry /root/.cargo/git /root/.rustup; \
+        export CARGO_HOME=/tmp/cargo RUSTUP_HOME=/tmp/rustup && \
+        curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --no-modify-path && \
+        /tmp/rustup/toolchains/stable-aarch64-unknown-linux-gnu/bin/cargo install rbw --version 1.15.0 --root /usr/local && \
+        rm -rf /tmp/cargo /tmp/rustup; \
     else \
         echo "Unsupported arch: $ARCH" && exit 1; \
     fi
