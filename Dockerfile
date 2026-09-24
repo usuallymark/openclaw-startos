@@ -38,15 +38,21 @@ RUN curl -fsSL "https://github.com/Start9Labs/start-technologies/releases/downlo
 # rbw is used by Alfred's skills to fetch secrets from Vaultwarden on Tanto.
 # The binary is installed system-wide; runtime configuration (XDG dirs, vault
 # URL) is handled by the workspace's rbw-get.sh wrapper, not here.
+RUN apt-get update && apt-get install -y --no-install-recommends pinentry-curses && rm -rf /var/lib/apt/lists/*
+
+# rbw: .deb only exists for amd64; arm64 builds from source via cargo
 RUN ARCH="$(dpkg --print-architecture)" && \
-    if [ "$ARCH" = "amd64" ]; then RBW_ARCH="amd64"; \
-    elif [ "$ARCH" = "arm64" ]; then RBW_ARCH="arm64"; \
-    else echo "Unsupported arch: $ARCH" && exit 1; fi && \
-    curl -fsSL "https://git.tozt.net/rbw/releases/deb/rbw_1.15.0_${RBW_ARCH}.deb" -o /tmp/rbw.deb && \
-    apt-get update && apt-get install -y --no-install-recommends pinentry-curses && \
-    dpkg -i /tmp/rbw.deb && \
-    rm /tmp/rbw.deb && \
-    rm -rf /var/lib/apt/lists/*
+    if [ "$ARCH" = "amd64" ]; then \
+        curl -fsSL "https://git.tozt.net/rbw/releases/deb/rbw_1.15.0_amd64.deb" -o /tmp/rbw.deb && \
+        dpkg -i /tmp/rbw.deb && \
+        rm /tmp/rbw.deb; \
+    elif [ "$ARCH" = "arm64" ]; then \
+        apt-get update && apt-get install -y --no-install-recommends cargo libssl-dev pkg-config && \
+        cargo install rbw --version 1.15.0 --root /usr/local && \
+        rm -rf /var/lib/apt/lists/* /root/.cargo/registry; \
+    else \
+        echo "Unsupported arch: $ARCH" && exit 1; \
+    fi
 
 # Stage skill files (loaded via extraDirs in openclaw.json)
 COPY skills/start-cli/SKILL.md /opt/skills/start-cli/SKILL.md
