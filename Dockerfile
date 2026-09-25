@@ -25,8 +25,10 @@ RUN ARCH="$(dpkg --print-architecture)" && \
 RUN curl -LsSf https://astral.sh/uv/install.sh | UV_INSTALL_DIR=/usr/local/bin sh
 
 # Install openclaw using the official install script (non-interactive)
-ENV HOME=/opt/openclaw-home
-RUN mkdir -p /opt/openclaw-home && \
+# HOME is set to /data (the runtime volume path) so openclaw installs there.
+# This matches where the package mounts the main volume at runtime.
+ENV HOME=/data
+RUN mkdir -p /data && \
     curl -fsSL https://openclaw.bot/install.sh | bash -s -- --no-prompt --no-onboard --version "${OPENCLAW_VERSION}"
 
 # Install start-cli from its product-scoped release in the start-technologies
@@ -34,13 +36,14 @@ RUN mkdir -p /opt/openclaw-home && \
 RUN curl -fsSL "https://github.com/Start9Labs/start-technologies/releases/download/start-cli%2Fv${START_CLI_VERSION}/start-cli_$(uname -m)-linux" -o /usr/local/bin/start-cli \
     && chmod +x /usr/local/bin/start-cli
 
-# Install rbw (Vaultwarden CLI) for credential retrieval at runtime.
-# rbw is used by Alfred's skills to fetch secrets from Vaultwarden on Tanto.
-# The binary is installed system-wide; runtime configuration (XDG dirs, vault
-# URL) is handled by the workspace's rbw-get.sh wrapper, not here.
+# Install pinentry-curses (required by rbw)
 RUN apt-get update && apt-get install -y --no-install-recommends pinentry-curses && rm -rf /var/lib/apt/lists/*
 
-# rbw: .deb only exists for amd64; arm64 builds from source via cargo
+# Install rbw (Vaultwarden CLI) for credential retrieval at runtime.
+# rbw is used by Alfred's skills to fetch secrets from Vaultwarden.
+# Configuration and XDG dirs are set up at runtime via the setup-vault oneshot.
+# - amd64: install from official .deb release
+# - arm64: build from source via rustup (no official .deb available)
 RUN ARCH="$(dpkg --print-architecture)" && \
     if [ "$ARCH" = "amd64" ]; then \
         curl -fsSL "https://git.tozt.net/rbw/releases/deb/rbw_1.15.0_amd64.deb" -o /tmp/rbw.deb && \
@@ -58,7 +61,18 @@ RUN ARCH="$(dpkg --print-architecture)" && \
     fi
 
 # Stage skill files (loaded via extraDirs in openclaw.json)
+# start-cli skill (always loaded)
 COPY skills/start-cli/SKILL.md /opt/skills/start-cli/SKILL.md
+# External service skills (loaded when service is enabled via Configure External Services)
+COPY skills/rbw/SKILL.md /opt/skills/rbw/SKILL.md
+COPY skills/qdrant/SKILL.md /opt/skills/qdrant/SKILL.md
+COPY skills/ollama/SKILL.md /opt/skills/ollama/SKILL.md
+COPY skills/nas/SKILL.md /opt/skills/nas/SKILL.md
+COPY skills/n8n/SKILL.md /opt/skills/n8n/SKILL.md
+COPY skills/trilium/SKILL.md /opt/skills/trilium/SKILL.md
+COPY skills/stirling/SKILL.md /opt/skills/stirling/SKILL.md
+COPY skills/searxng/SKILL.md /opt/skills/searxng/SKILL.md
+COPY skills/firecrawl/SKILL.md /opt/skills/firecrawl/SKILL.md
 
 # Stage workspace bootstrap files
 COPY workspace/SOUL.md /opt/workspace/SOUL.md
@@ -66,15 +80,16 @@ COPY workspace/IDENTITY.md /opt/workspace/IDENTITY.md
 COPY workspace/MEMORY.md /opt/workspace/MEMORY.md
 
 # Set runtime environment variables
+# HOME and OPENCLAW_STATE_DIR point to /data — the persistent volume mount point.
+# All openclaw state, workspace, and rbw config lives under /data/.openclaw/
 ENV NODE_ENV=production
 ENV HOME=/data
 ENV OPENCLAW_STATE_DIR=/data/.openclaw
 ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
-# Include openclaw binary paths - both npm global and where openclaw may install its native binary
-ENV PATH="/opt/openclaw-home/.openclaw/bin:/usr/local/lib/node_modules/openclaw/bin:/usr/local/bin:$PATH"
+# Include openclaw binary paths
+ENV PATH="/data/.openclaw/bin:/usr/local/lib/node_modules/openclaw/bin:/usr/local/bin:$PATH"
 
 WORKDIR /data
 
 # The entrypoint will be provided by the StartOS daemon configuration
-# Default command runs the gateway
 CMD ["openclaw", "gateway", "--port", "18789", "--bind", "lan"]

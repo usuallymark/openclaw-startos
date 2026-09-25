@@ -1,6 +1,7 @@
 import { sdk } from '../sdk'
 import { approveDevices } from './approveDevices'
 import { configureApiCredentials } from './configureApiCredentials'
+import { configureExternalServices } from './configureExternalServices'
 import { connectTelegram } from './connectTelegram'
 import { connectWhatsapp } from './connectWhatsapp'
 import { configureSimplex } from './configureSimplex'
@@ -13,6 +14,7 @@ import { setPassword } from './setPassword'
 export const actions = sdk.Actions.of()
   .addAction(setPassword)
   .addAction(configureApiCredentials)
+  .addAction(configureExternalServices)
   .addAction(connectTelegram)
   .addAction(connectWhatsapp)
   .addAction(configureSimplex)

@@ -1,10 +1,15 @@
 import { sdk } from './sdk'
-import { uiPort } from './utils'
+import { uiPort, qdrantPort } from './utils'
 import { i18n } from './i18n'
 
 // Host id (the sdk.MultiHost.of group) — distinct from the interface id exported on it.
 export const uiHostId = 'ui-multi'
 export const uiInterfaceId = 'ui'
+
+// Qdrant internal bridge-only binding — NOT exported to LAN.
+// The openclaw container reaches Qdrant via sdk.host.getBridgeAddress() in main.ts.
+export const qdrantHostId = 'qdrant'
+export const qdrantInternalPort = qdrantPort
 
 export const setInterfaces = sdk.setupInterfaces(async ({ effects }) => {
   const uiMulti = sdk.MultiHost.of(effects, uiHostId)
@@ -26,6 +31,13 @@ export const setInterfaces = sdk.setupInterfaces(async ({ effects }) => {
   })
 
   const uiReceipt = await uiMultiOrigin.export([ui])
+
+  // Qdrant — bind to bridge only, no export to LAN.
+  // Other containers in this package reach it via sdk.host.getBridgeAddress().
+  await sdk.MultiHost.of(effects, qdrantHostId).bindPort(qdrantPort, {
+    protocol: 'http',
+    preferredExternalPort: qdrantPort,
+  })
 
   return [uiReceipt]
 })

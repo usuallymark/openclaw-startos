@@ -9,7 +9,7 @@ import { sdk } from '../sdk'
 import { DOCTOR_TIMEOUT_MS, runOpenclawCli } from '../utils'
 
 export const current = VersionInfo.of({
-  version: '2026.9.4:0',
+  version: '2026.9.4:1',
   releaseNotes: {
     en_US: `Updates OpenClaw from 2026.7.1 to 2026.9.4.
 

@@ -1,63 +1,134 @@
-# OpenClaw
+# OpenClaw Setup Guide
 
-OpenClaw runs an LLM of your choosing. On its own it's a chat agent with no access to your server; if you grant it access (the _Login to StartOS_ action) it gains root-equivalent control and can run any command. Install it on a server that holds no other services or keys you can't afford to lose.
+OpenClaw is an AI agent platform powered by Claude. This package includes
+OpenClaw plus a built-in Qdrant vector database for long-term memory, and
+optional integration with rbw (Vaultwarden) for secure credential management.
 
-## Documentation
+---
 
-- [Messaging channels](https://docs.openclaw.ai/channels) — connecting Telegram, WhatsApp, SimpleX, and other chat platforms to your agent.
-- [Personality and identity](https://docs.openclaw.ai/pi) — shaping how your agent behaves through the workspace files (SOUL, IDENTITY, MEMORY).
-- [Tools](https://docs.openclaw.ai/tools) — the toolset the agent can call.
-- [Models](https://docs.openclaw.ai/models) — supported LLM providers and how model selection and fallback work.
-- [Gateway](https://docs.openclaw.ai/gateway) — the control panel and WebChat that this package exposes.
+## Quick Start
 
-## What you get on StartOS
+### 1. Set a Gateway Password
 
-- **The OpenClaw Gateway**, served over the **Web UI** interface — a browser-based control panel and WebChat where you talk to your agent.
-- **`start-cli` bundled in the container**, so once you authenticate the package (see _Login to StartOS_ below) the agent can manage your StartOS server directly: read service status, install or remove packages, send notifications, and so on.
-- **Workspace files preserved across upgrades.** SOUL, IDENTITY, and MEMORY live on the package's `main` volume; MEMORY is preserved on updates while the others are kept in sync with package defaults. A daily heartbeat refreshes the server snapshot in MEMORY; add your own heartbeat checklist as monitor scratch (`openclaw cron scratch`) rather than editing the package's prompt.
-- **A persistent server snapshot in MEMORY.md** captured on each startup so the agent has fresh context about the host it's running on.
+Run the **Set Password** action. This is the password you'll use to log into
+the OpenClaw web interface. Choose something you'll remember — it protects
+access to your AI agent.
 
-## Getting set up
+### 2. Configure an AI Provider
 
-1. Open OpenClaw's **Dashboard** tab. On a fresh install you'll see two critical tasks waiting: **Set Password** and **Configure AI Provider**. Complete them in either order — both are required before you can use the gateway.
-2. Run **Set Password**. The action generates a 22-character password and shows it once, masked and copyable; save it now in your password manager — you'll need it to log in to the Web UI. (The action becomes **Reset Password** after a password is set.)
-3. Run **Configure AI Provider** and pick your primary backend:
-   - **Cloud** — Anthropic (Claude), OpenAI (GPT), Google (Gemini), or xAI (Grok): choose a default model (or type any id into the **Custom Model** field) and paste the provider's API key.
-   - **Local** — Ollama, vLLM, or llama.cpp running on your StartOS server: enter the served model id. Selecting one adds it as a dependency (install it from the Marketplace if you haven't) and wires it automatically — no cloud key needed, and prompts stay on your server.
+Run the **Configure AI Provider** action and enter your API key for your
+chosen provider (Anthropic Claude, OpenAI, etc.). Without this, OpenClaw
+cannot process any requests.
 
-   Optionally add a fallback provider, used automatically when the primary is rate-limited or unavailable. Change the model anytime from Web UI chat with the `/model` command.
+### 3. Configure External Services (Optional but Recommended)
 
-4. Open the **Web UI** interface from the Dashboard and log in with the password from **Set Password**. The page then stops at **Approve this browser**: go back to the Dashboard, run **Approve Browser Pairing**, and the page connects on its own. Every new browser or device needs this once. Confirm the WebChat loads and that you can send a prompt.
-5. Once the gateway is running you'll see an additional task: **Login to StartOS**. Run it to authenticate the bundled `start-cli` with your server — this is what lets the agent act on the host. The action asks for your StartOS master password. **This grants the agent root-equivalent access to your server. Only do this on a machine you treat as expendable.**
+Run the **Configure External Services** action to connect OpenClaw to your
+self-hosted tools. Each service can be independently enabled or disabled:
 
-## Using OpenClaw
+| Service | What it enables |
+|---|---|
+| **Vaultwarden** | Secure credential storage — enable this first if you use it |
+| **Ollama** | Local AI models for embeddings and vision analysis |
+| **NAS** | Read/write files on your network storage |
+| **n8n** | Trigger automated workflows |
+| **Trilium Notes** | Create and organize research notes |
+| **Stirling PDF** | OCR and process PDF documents |
+| **SearXNG** | Privacy-respecting web search |
+| **Firecrawl** | Extract content from web pages |
 
-### Web UI
+**Configure Vaultwarden first** if you use it — once it's enabled, credential
+fields for other services will automatically offer to fetch from Vaultwarden
+instead of requiring manual entry.
 
-The Web UI is the OpenClaw Gateway control panel and WebChat. You'll land in a chat surface backed by whichever model you configured; the gateway also exposes channel status, agent configuration, and the workspace files described in the upstream documentation.
+### 4. Open the Web Interface
 
-### Channels
+Find the OpenClaw interface address under **Interfaces** in the StartOS UI.
+Log in with the gateway password you set in Step 1.
 
-OpenClaw can listen on several messaging platforms in addition to the Web UI. Three are wired up as StartOS actions; the rest are configured through the upstream channels documentation.
+---
 
-- **Connect Telegram** — paste a bot token from [@BotFather](https://t.me/BotFather), pick a DM policy (Pairing approves new senders with a one-time code, Open accepts anyone), and restart the service for the change to take effect. After that, DM the bot to chat with your agent.
-- **Connect WhatsApp** — pick a DM policy (Allowlist with comma-separated phone numbers in international format, or Open) and run the action; it returns a QR code. Scan it from WhatsApp under **Settings → Linked Devices → Link a Device**. The service must be running to run this action.
-- **Configure SimpleX** — chat with your agent over [SimpleX](https://simplex.chat), a messenger with no user identifiers. This one needs a companion service: install **SimpleX Websocket Bridge** from the Marketplace (Community Registry) first and make sure it's running, since the bridge holds the SimpleX identity your agent talks through. Then set this action to **Enabled**, pick a DM policy (Pairing or Open), and submit. It installs the OpenClaw SimpleX plugin for you, which can take a few minutes. Setting the action to **Disabled** removes the channel and uninstalls the plugin.
+## Vaultwarden Setup
 
-  If a later package update needs a newer version of the OpenClaw SimpleX plugin, a task reappears on the Dashboard asking you to submit **Configure SimpleX** again; that upgrade is the only thing it does.
+Vaultwarden stores all your service credentials securely. OpenClaw fetches
+them automatically at startup, so you never need to enter passwords directly
+into skill files.
 
-### Configuration actions
+**To set up Vaultwarden integration:**
 
-- **Reset Password** — re-runs Set Password to rotate the gateway auth token. The new password is shown once.
-- **Configure AI Provider** — re-run any time to switch providers, change models, rotate API keys, or add/remove a fallback. The form is pre-filled with your current provider and model; API keys are never shown, so leave a key blank to keep the one already saved.
-- **Approve Browser Pairing** — admits every browser currently waiting at **Approve this browser** on the Web UI. Run it right after your own login attempt; an approved browser keeps its access until you remove it under the Web UI's devices.
-- **Login to StartOS** — re-run if `start-cli` ever loses its session (a task automatically reappears on the Dashboard if the package detects it isn't authenticated).
-- **Revoke StartOS Access** — un-enrolls OpenClaw's key from your server and deletes it, cutting off server administration without uninstalling the service, and leaving no session to clean up by hand. Run _Login to StartOS_ again to grant it back.
-- **Repair OpenClaw** — with the service stopped, runs OpenClaw's built-in doctor and shows what it printed: check the configuration and database (and optionally apply its repairs), or import old session history into OpenClaw's database. Package updates run these repairs for you; reach for this only if the service refuses to start afterwards, and back up first when applying changes.
+1. Log into your Vaultwarden web vault
+2. Go to **Account Settings → Security → API Key → View API Key**
+3. Copy the `client_secret` value
+4. In Configure External Services, enable Vaultwarden and enter:
+   - Your Vaultwarden server URL
+   - Your account email
+   - The `client_secret` as the API Key
+   - Your master password
 
-## Limitations
+**Vaultwarden entry naming convention:**
 
-- **Privacy.** With a cloud provider (Anthropic, OpenAI, Google, xAI), every prompt is forwarded to that provider — treat anything you type as visible to them. Choose a local backend (Ollama, vLLM, llama.cpp) to keep inference on your server.
-- **Destructive capability.** Once **Login to StartOS** is complete the agent can run commands that uninstall services, change configuration, or render the server unusable. There is no built-in confirmation step; if you want a guardrail, don't run Login to StartOS. If you already granted access, run **Revoke StartOS Access** to remove the stored authentication.
-- **Voice features and browser automation** advertised in the upstream docs are not available in this package — there is no companion app and no display attached to the container.
-- **Channels beyond Telegram, WhatsApp, and SimpleX** (Slack, Discord, Signal, Matrix, etc.) are not wired into StartOS actions. Configure them by editing the gateway configuration following the upstream channels documentation.
+OpenClaw looks up credentials by entry name and field. Use these exact names:
+
+| Service | Entry Name | Field |
+|---|---|---|
+| n8n | `n8n` | `API_Key` |
+| Trilium | `Trilium` | `API_Key` |
+| NAS username | `NAS` | `username` |
+| NAS password | `NAS` | `Password` |
+| Gitea | `Gitea` | `API_Key` |
+| Anthropic | `Anthropic` | `API_Key` |
+| Qdrant | `Qdrant` | `API_Key` |
+
+---
+
+## Restoring a Custom Workspace
+
+If you have an existing OpenClaw workspace in a git repository (Gitea,
+GitHub, etc.), you can restore it after installation:
+
+1. Connect to your Start9 server via SSH
+2. Attach to the OpenClaw container:
+   ```
+   sudo start-cli package attach openclaw
+   ```
+3. Clone your workspace:
+   ```
+   cd /data/.openclaw/workspace
+   git init
+   git remote add origin https://YOUR-GITEA-URL/YOUR-REPO.git
+   git fetch origin master
+   cp /data/.openclaw/openclaw.json /data/.openclaw/openclaw.json.bak
+   git reset --hard origin/master
+   cp /data/.openclaw/openclaw.json.bak /data/.openclaw/openclaw.json
+   ```
+
+This preserves the package-managed `openclaw.json` while restoring all your
+custom workspace files (AGENTS.md, skills, workspaces, etc.).
+
+---
+
+## Updating
+
+When a new version of this package is available, download the `.s9pk` file
+and sideload it via **StartOS → System → Sideload a Service**. Your data
+and configuration are preserved automatically.
+
+---
+
+## Troubleshooting
+
+**Health check shows "not ready":**
+Check the service logs (StartOS → OpenClaw → Logs) for error messages.
+Common causes: missing AI provider key, Qdrant startup delay (allow 30s).
+
+**Vaultwarden credentials not loading:**
+Verify the API key and master password in Configure External Services.
+Check that Vaultwarden is reachable from this server on your network.
+
+**Skills not working after enabling a service:**
+OpenClaw must be restarted after configuring external services. The restart
+happens automatically when you save the Configure External Services action.
+
+**Workspace files lost after update:**
+Updates preserve the `/data` volume. If files are missing, your workspace
+may not have been restored from git. Follow the "Restoring a Custom Workspace"
+steps above.
