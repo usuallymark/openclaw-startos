@@ -43,19 +43,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends pinentry-curses
 # rbw is used by Alfred's skills to fetch secrets from Vaultwarden.
 # Configuration and XDG dirs are set up at runtime via the setup-vault oneshot.
 # - amd64: install from official .deb release
-# - arm64: build from source via rustup (no official .deb available)
+# - arm64: prebuilt binaries from this repo's rbw-arm64-1.15.0 release
+#   (built once by .github/workflows/build-rbw-arm64.yml; sha256-pinned)
 RUN ARCH="$(dpkg --print-architecture)" && \
     if [ "$ARCH" = "amd64" ]; then \
         curl -fsSL "https://git.tozt.net/rbw/releases/deb/rbw_1.15.0_amd64.deb" -o /tmp/rbw.deb && \
         dpkg -i /tmp/rbw.deb && \
         rm /tmp/rbw.deb; \
     elif [ "$ARCH" = "arm64" ]; then \
-        apt-get update && apt-get install -y --no-install-recommends curl libssl-dev pkg-config gcc libc6-dev && \
-        rm -rf /var/lib/apt/lists/* && \
-        export CARGO_HOME=/tmp/cargo RUSTUP_HOME=/tmp/rustup PATH="/tmp/cargo/bin:$PATH" && \
-        curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --no-modify-path && \
-        CARGO_HOME=/tmp/cargo RUSTUP_HOME=/tmp/rustup /tmp/cargo/bin/cargo install rbw --version 1.15.0 --root /usr/local && \
-        rm -rf /tmp/cargo /tmp/rustup; \
+        RBW_URL="https://github.com/usuallymark/openclaw-startos/releases/download/rbw-arm64-1.15.0" && \
+        curl -fsSL "$RBW_URL/rbw" -o /usr/local/bin/rbw && \
+        curl -fsSL "$RBW_URL/rbw-agent" -o /usr/local/bin/rbw-agent && \
+        echo "11e2fc0effa04148388fa03c71e39edb3a191ea9a7909d81d3d330ee99de05c6  /usr/local/bin/rbw" | sha256sum -c - && \
+        echo "4854370cc9fb74af3ed5c82159ddebbe5c63e6e9cc70176f6ea417b25be1d3c5  /usr/local/bin/rbw-agent" | sha256sum -c - && \
+        chmod 755 /usr/local/bin/rbw /usr/local/bin/rbw-agent; \
     else \
         echo "Unsupported arch: $ARCH" && exit 1; \
     fi
