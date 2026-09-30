@@ -29,6 +29,8 @@ rbw is installed at `/usr/bin/rbw`. Configuration and cache are stored at:
 - Runtime: `/data/.openclaw/rbw/runtime/`
 
 The vault is unlocked automatically at startup if Vaultwarden is configured.
+rbw uses a non-interactive pinentry, so if the vault has locked (timeout or
+agent restart), the next `rbw get` unlocks it again on its own.
 
 ## Fetching a Credential
 
@@ -80,4 +82,5 @@ Example entries:
 rbw unlocked && echo "UNLOCKED" || echo "LOCKED"
 ```
 
-If locked, the startup oneshot failed. Check the service logs.
+If a `rbw get` still fails with the vault locked, the master password is
+missing or wrong — check the `setup-vault` lines in the service logs.

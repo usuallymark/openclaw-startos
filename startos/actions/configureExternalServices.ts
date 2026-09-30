@@ -1,5 +1,6 @@
 import { sdk } from '../sdk'
 import { externalServicesJson } from '../fileModels/externalServices.json'
+import { splitPemCerts, writeMasterPassword } from '../vault'
 
 const { InputSpec, Value, Variants } = sdk
 
@@ -53,10 +54,10 @@ const urlField = (label: string, description: string, placeholder: string) =>
 // ── Service variants (Disabled / Enabled) ───────────────────────────────────
 
 const vaultwardenService = Value.union({
-    name: 'Vaultwarden (Password Manager)',
-    description:
-      'Vaultwarden is a self-hosted password manager compatible with Bitwarden clients. When enabled, OpenClaw fetches credentials for other services from it at runtime, so you do not need to enter passwords here.\nGitHub: https://github.com/dani-garcia/vaultwarden',
-    default: 'disabled',
+  name: 'Vaultwarden (Password Manager)',
+  description:
+    'Vaultwarden is a self-hosted password manager compatible with Bitwarden clients. When enabled, OpenClaw fetches credentials for other services from it at runtime, so you do not need to enter passwords here.\nGitHub: https://github.com/dani-garcia/vaultwarden',
+  default: 'disabled',
   variants: Variants.of({
     disabled: { name: 'Disabled', spec: InputSpec.of({}) },
     enabled: {
@@ -69,31 +70,21 @@ const vaultwardenService = Value.union({
         ),
         email: Value.text({
           name: 'Account Email',
-          description:
-            'The email address of your Vaultwarden account. Used with the API key to log in.',
+          description: 'The email address of your Vaultwarden account.',
           required: true,
           default: null,
           masked: false,
           placeholder: 'you@example.com',
           inputmode: 'email',
         }),
-        apiKey: Value.text({
-          name: 'API Key (client_secret)',
-          description:
-            'Your Vaultwarden Personal API Key. Find it at: Vaultwarden Web UI → Account Settings → Security → API Key → View API Key. Copy the "client_secret" value. Used instead of your master password for automated login.',
-          required: true,
-          default: null,
-          masked: true,
-          placeholder: null,
-        }),
         masterPassword: Value.text({
           name: 'Master Password',
           description:
-            'Your Vaultwarden master password. Used to unlock the vault at startup. Combined with the API key, this lets OpenClaw access all credentials automatically on every restart.',
-          required: true,
+            'Your Vaultwarden master password, used to log in and unlock the vault at every startup. Paste it exactly — it is stored byte-for-byte in a private file (not in the settings file) and read by rbw non-interactively.\n\nLeave blank to keep the password already saved.',
+          required: false,
           default: null,
           masked: true,
-          placeholder: null,
+          placeholder: 'Leave blank to keep the saved password',
         }),
       }),
     },
@@ -101,10 +92,10 @@ const vaultwardenService = Value.union({
 })
 
 const ollamaService = Value.union({
-    name: 'Ollama (Local AI Models)',
-    description:
-      'Ollama runs large language models locally. Used by OpenClaw for embeddings (nomic-embed-text) and vision analysis (llama3.2-vision).\nGitHub: https://github.com/ollama/ollama',
-    default: 'disabled',
+  name: 'Ollama (Local AI Models)',
+  description:
+    'Ollama runs large language models locally. Used by OpenClaw for embeddings (nomic-embed-text) and vision analysis (llama3.2-vision).\nGitHub: https://github.com/ollama/ollama',
+  default: 'disabled',
   variants: Variants.of({
     disabled: { name: 'Disabled', spec: InputSpec.of({}) },
     enabled: {
@@ -121,10 +112,10 @@ const ollamaService = Value.union({
 })
 
 const nasService = Value.union({
-    name: 'NAS (Network Storage)',
-    description:
-      'Connect to a NAS via SMB/CIFS. Used by agents to read and write files, photos, and documents on your network storage.',
-    default: 'disabled',
+  name: 'NAS (Network Storage)',
+  description:
+    'Connect to a NAS via SMB/CIFS. Used by agents to read and write files, photos, and documents on your network storage.',
+  default: 'disabled',
   variants: Variants.of({
     disabled: { name: 'Disabled', spec: InputSpec.of({}) },
     enabled: {
@@ -158,10 +149,10 @@ const nasService = Value.union({
 })
 
 const n8nService = Value.union({
-    name: 'n8n (Workflow Automation)',
-    description:
-      'n8n is an open-source workflow automation tool. Used by agents to trigger and monitor automated workflows.\nGitHub: https://github.com/n8n-io/n8n',
-    default: 'disabled',
+  name: 'n8n (Workflow Automation)',
+  description:
+    'n8n is an open-source workflow automation tool. Used by agents to trigger and monitor automated workflows.\nGitHub: https://github.com/n8n-io/n8n',
+  default: 'disabled',
   variants: Variants.of({
     disabled: { name: 'Disabled', spec: InputSpec.of({}) },
     enabled: {
@@ -184,10 +175,10 @@ const n8nService = Value.union({
 })
 
 const triliumService = Value.union({
-    name: 'Trilium Notes',
-    description:
-      'Trilium Notes is a hierarchical note-taking application. Used by agents to create and organize research notes.\nGitHub: https://github.com/zadam/trilium',
-    default: 'disabled',
+  name: 'Trilium Notes',
+  description:
+    'Trilium Notes is a hierarchical note-taking application. Used by agents to create and organize research notes.\nGitHub: https://github.com/zadam/trilium',
+  default: 'disabled',
   variants: Variants.of({
     disabled: { name: 'Disabled', spec: InputSpec.of({}) },
     enabled: {
@@ -210,10 +201,10 @@ const triliumService = Value.union({
 })
 
 const stirlingService = Value.union({
-    name: 'Stirling PDF',
-    description:
-      'Stirling PDF is a self-hosted PDF manipulation tool. Used by agents for OCR processing of documents.\nGitHub: https://github.com/Stirling-Tools/Stirling-PDF',
-    default: 'disabled',
+  name: 'Stirling PDF',
+  description:
+    'Stirling PDF is a self-hosted PDF manipulation tool. Used by agents for OCR processing of documents.\nGitHub: https://github.com/Stirling-Tools/Stirling-PDF',
+  default: 'disabled',
   variants: Variants.of({
     disabled: { name: 'Disabled', spec: InputSpec.of({}) },
     enabled: {
@@ -236,10 +227,10 @@ const stirlingService = Value.union({
 })
 
 const searxngService = Value.union({
-    name: 'SearXNG (Web Search)',
-    description:
-      'SearXNG is a privacy-respecting metasearch engine. Used by agents for web search without tracking. No authentication required.\nGitHub: https://github.com/searxng/searxng',
-    default: 'disabled',
+  name: 'SearXNG (Web Search)',
+  description:
+    'SearXNG is a privacy-respecting metasearch engine. Used by agents for web search without tracking. No authentication required.\nGitHub: https://github.com/searxng/searxng',
+  default: 'disabled',
   variants: Variants.of({
     disabled: { name: 'Disabled', spec: InputSpec.of({}) },
     enabled: {
@@ -256,10 +247,10 @@ const searxngService = Value.union({
 })
 
 const firecrawlService = Value.union({
-    name: 'Firecrawl (Web Scraping)',
-    description:
-      'Firecrawl converts web pages into clean, structured content agents can read. No authentication required for self-hosted instances.\nGitHub: https://github.com/mendableai/firecrawl',
-    default: 'disabled',
+  name: 'Firecrawl (Web Scraping)',
+  description:
+    'Firecrawl converts web pages into clean, structured content agents can read. No authentication required for self-hosted instances.\nGitHub: https://github.com/mendableai/firecrawl',
+  default: 'disabled',
   variants: Variants.of({
     disabled: { name: 'Disabled', spec: InputSpec.of({}) },
     enabled: {
@@ -275,7 +266,68 @@ const firecrawlService = Value.union({
   }),
 })
 
+// ── Network: host mappings + custom CA ──────────────────────────────────────
+
+const hostMappings = Value.list(
+  sdk.List.obj(
+    {
+      name: 'Custom Host Mappings',
+      description:
+        'Hostnames OpenClaw should resolve to a fixed IP address, written to /etc/hosts at startup.\n\nNeeded for any service with a ".local" name (e.g. vaultwarden.home.local). StartOS treats ".local" as mDNS-only (RFC 6762) and will not forward it to your DNS server, so those names never resolve from inside a service even if your router or AdGuard knows them. A mapping here bypasses DNS entirely.\n\nNames ending in .lan, .internal or a real domain normally resolve without this.',
+      default: [],
+    },
+    {
+      spec: InputSpec.of({
+        hostname: Value.text({
+          name: 'Hostname',
+          description: 'e.g. vaultwarden.home.local',
+          required: true,
+          default: null,
+          placeholder: 'vaultwarden.home.local',
+          patterns: [
+            {
+              regex:
+                '^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*$',
+              description:
+                'Must be a valid hostname (letters, digits, hyphens, dots).',
+            },
+          ],
+        }),
+        ip: Value.text({
+          name: 'IP Address',
+          description: 'The LAN IP address of that host, e.g. 192.168.1.50',
+          required: true,
+          default: null,
+          placeholder: '192.168.0.x',
+          patterns: [
+            {
+              regex:
+                '^((25[0-5]|2[0-4]\\d|1?\\d?\\d)\\.){3}(25[0-5]|2[0-4]\\d|1?\\d?\\d)$',
+              description: 'Must be an IPv4 address, e.g. 192.168.1.50',
+            },
+          ],
+        }),
+      }),
+      displayAs: '{{hostname}} → {{ip}}',
+      uniqueBy: 'hostname',
+    },
+  ),
+)
+
+const caCert = Value.textarea({
+  name: 'Custom CA Certificate',
+  description:
+    'PEM certificate(s) of an internal certificate authority to trust, e.g. the CA that signs your homelab HTTPS certificates (Vaultwarden, Trilium, n8n…). Paste one or more blocks from -----BEGIN CERTIFICATE----- to -----END CERTIFICATE-----. Installed into the system trust store at startup; used by rbw, curl and Node.\n\nThis is a public certificate, not a private key. Leave blank if all your services use publicly trusted certificates.',
+  required: false,
+  default: null,
+  minRows: 4,
+  maxRows: 12,
+  placeholder: '-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----',
+})
+
 const inputSpec = InputSpec.of({
+  hostMappings,
+  caCert,
   vaultwarden: vaultwardenService,
   ollama: ollamaService,
   nas: nasService,
@@ -315,7 +367,7 @@ export const configureExternalServices = sdk.Action.withInput(
   async ({ effects }) => ({
     name: 'Configure External Services',
     description:
-      'Connect OpenClaw to your self-hosted tools (Vaultwarden, Ollama, NAS, n8n, Trilium, Stirling PDF, SearXNG, Firecrawl). Enable only the services you use. If Vaultwarden is enabled, other services can fetch their credentials from it automatically. Saving restarts OpenClaw to apply changes.',
+      'Connect OpenClaw to your self-hosted tools (Vaultwarden, Ollama, NAS, n8n, Trilium, Stirling PDF, SearXNG, Firecrawl), plus host mappings and a custom CA for internal HTTPS services. Enable only the services you use. If Vaultwarden is enabled, other services can fetch their credentials from it automatically. Saving restarts OpenClaw to apply changes.',
     warning: null,
     allowedStatuses: 'any',
     group: null,
@@ -342,14 +394,18 @@ export const configureExternalServices = sdk.Action.withInput(
     const firecrawl = cfg?.firecrawl
 
     return {
+      hostMappings: (cfg?.hostMappings ?? []).map((m) => ({
+        hostname: m.hostname,
+        ip: m.ip,
+      })),
+      caCert: cfg?.caCert ?? null,
       vaultwarden: vw?.enabled
         ? {
             selection: 'enabled' as const,
             value: {
               url: vw.url ?? '',
               email: vw.email ?? '',
-              apiKey: '', // never echo secrets
-              masterPassword: '',
+              masterPassword: null, // never echo secrets
             },
           }
         : { selection: 'disabled' as const, value: {} },
@@ -409,16 +465,36 @@ export const configureExternalServices = sdk.Action.withInput(
   async ({ effects, input }) => {
     const i = input as any
 
+    const hostMappings = (
+      (i.hostMappings ?? []) as {
+        hostname: string
+        ip: string
+      }[]
+    ).map((m) => ({ hostname: m.hostname.trim(), ip: m.ip.trim() }))
+
+    const caText: string = (i.caCert ?? '').trim()
+    if (caText && splitPemCerts(caText).length === 0) {
+      throw new Error(
+        'Custom CA Certificate: no PEM certificate found. Paste the full block including the -----BEGIN CERTIFICATE----- and -----END CERTIFICATE----- lines.',
+      )
+    }
+    const caCert = caText ? splitPemCerts(caText).join('\n') + '\n' : undefined
+
+    // The master password is never stored in the settings file. A non-empty
+    // value is written byte-exact to rbw/.credentials; blank keeps the
+    // existing file untouched.
     const vaultwarden =
       i.vaultwarden.selection === 'enabled'
         ? {
             enabled: true,
             url: i.vaultwarden.value.url,
             email: i.vaultwarden.value.email,
-            apiKey: i.vaultwarden.value.apiKey,
-            masterPassword: i.vaultwarden.value.masterPassword,
           }
         : { enabled: false }
+    const newMasterPassword: string =
+      i.vaultwarden.selection === 'enabled'
+        ? (i.vaultwarden.value.masterPassword ?? '')
+        : ''
 
     const ollama =
       i.ollama.selection === 'enabled'
@@ -473,23 +549,13 @@ export const configureExternalServices = sdk.Action.withInput(
         ? { enabled: true, url: i.firecrawl.value.url }
         : { enabled: false }
 
-    // Preserve existing Vaultwarden secrets if the user left them blank on an
-    // update (we never echo them into the form, so blank means "unchanged").
-    if (vaultwarden.enabled) {
-      const prev = await externalServicesJson
-        .read()
-        .once()
-        .catch(() => undefined)
-      const prevVw = prev?.vaultwarden
-      if (!vaultwarden.apiKey && prevVw?.apiKey) {
-        vaultwarden.apiKey = prevVw.apiKey
-      }
-      if (!vaultwarden.masterPassword && prevVw?.masterPassword) {
-        vaultwarden.masterPassword = prevVw.masterPassword
-      }
+    if (newMasterPassword) {
+      await writeMasterPassword(newMasterPassword)
     }
 
     await externalServicesJson.write(effects, {
+      hostMappings,
+      caCert,
       vaultwarden,
       ollama,
       nas,

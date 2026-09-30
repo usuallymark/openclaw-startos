@@ -14,10 +14,18 @@ const vaultwardenShape = z
     enabled: z.boolean().catch(false),
     url: z.string().optional().catch(undefined),
     email: z.string().optional().catch(undefined),
+    // Legacy (<= 2026.9.4:1). No longer written: rbw cannot log in with an
+    // API key, and the master password now lives only in rbw/.credentials.
+    // Still read once so an existing install can seed .credentials.
     apiKey: z.string().optional().catch(undefined),
     masterPassword: z.string().optional().catch(undefined),
   })
   .catch({ enabled: false })
+
+const hostMappingShape = z.object({
+  hostname: z.string(),
+  ip: z.string(),
+})
 
 const urlOnlyShape = z
   .object({
@@ -45,6 +53,8 @@ const nasShape = z
   .catch({ enabled: false })
 
 const shape = z.object({
+  hostMappings: z.array(hostMappingShape).catch([]),
+  caCert: z.string().optional().catch(undefined),
   vaultwarden: vaultwardenShape.catch({ enabled: false }),
   ollama: urlOnlyShape.catch({ enabled: false }),
   nas: nasShape.catch({ enabled: false }),

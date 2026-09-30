@@ -55,14 +55,21 @@ into skill files.
 
 **To set up Vaultwarden integration:**
 
-1. Log into your Vaultwarden web vault
-2. Go to **Account Settings → Security → API Key → View API Key**
-3. Copy the `client_secret` value
-4. In Configure External Services, enable Vaultwarden and enter:
-   - Your Vaultwarden server URL
-   - Your account email
-   - The `client_secret` as the API Key
-   - Your master password
+In Configure External Services, enable Vaultwarden and enter:
+- Your Vaultwarden server URL
+- Your account email
+- Your master password — paste it exactly. It is stored byte-for-byte in a
+  private file and never shown again; leave the field blank later to keep it.
+
+Login uses the master password only (rbw does not support API-key login).
+The vault unlocks at startup and re-unlocks automatically when a skill needs it.
+
+**If Vaultwarden has a `.local` name or an internal certificate**, also fill in:
+- **Custom Host Mappings** — e.g. `vaultwarden.home.local` → `192.168.1.50`.
+  StartOS treats `.local` as mDNS-only and never forwards it to your DNS
+  server, so these names cannot resolve from inside a service otherwise.
+- **Custom CA Certificate** — paste the PEM of the CA that signed the
+  certificate, so HTTPS to it is trusted.
 
 **Vaultwarden entry naming convention:**
 
@@ -121,8 +128,11 @@ Check the service logs (StartOS → OpenClaw → Logs) for error messages.
 Common causes: missing AI provider key, Qdrant startup delay (allow 30s).
 
 **Vaultwarden credentials not loading:**
-Verify the API key and master password in Configure External Services.
-Check that Vaultwarden is reachable from this server on your network.
+Check the logs for the `setup-vault` step. "error sending request" usually
+means a `.local` name without a Custom Host Mapping, or an internal HTTPS
+certificate without the Custom CA Certificate. An authentication error means
+the master password is wrong — re-enter it exactly in Configure External
+Services.
 
 **Skills not working after enabling a service:**
 OpenClaw must be restarted after configuring external services. The restart

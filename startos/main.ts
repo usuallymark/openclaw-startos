@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir } from 'fs/promises'
+import { readFile, writeFile, mkdir, access } from 'fs/promises'
 import { installRootCA, loginToOs } from './actions/loginToOs'
 import { authProfilesJson } from './fileModels/authProfiles.json'
 import { openclawJson } from './fileModels/openclaw.json'
@@ -15,6 +15,20 @@ import { sdk } from './sdk'
 import { mainMounts, qdrantMounts, uiPort, qdrantPort } from './utils'
 import { watchSimplexAddress, withSimplexMounts } from './simplex'
 import { requestSimplexPluginUpgrade } from './actions/configureSimplex'
+import {
+  RBW_ENV,
+  RBW_CONFIG,
+  RBW_CREDENTIALS,
+  RBW_DIR,
+  RBW_PINENTRY,
+  PINENTRY_SCRIPT,
+  CUSTOM_CA_DIR,
+  CUSTOM_CA_PREFIX,
+  applyHostsBlock,
+  credentialsVolumePath,
+  splitPemCerts,
+  writeMasterPassword,
+} from './vault'
 
 // Maps each provider's auth-profile id to the env var OpenClaw reads its API
 // key from. Keep in sync with MANAGED_PROVIDERS in configureApiCredentials.ts.
@@ -23,14 +37,6 @@ const providerKeyEnvVar: Record<string, string> = {
   openai: 'OPENAI_API_KEY',
   google: 'GEMINI_API_KEY',
   xai: 'XAI_API_KEY',
-}
-
-// rbw XDG environment — every rbw invocation (startup and skills) uses these.
-const RBW_ENV = {
-  XDG_CONFIG_HOME: '/data/.openclaw/rbw/config',
-  XDG_CACHE_HOME: '/data/.openclaw/rbw/cache',
-  XDG_RUNTIME_DIR: '/data/.openclaw/rbw/runtime',
-  HOME: '/data',
 }
 
 export const main = sdk.setupMain(async ({ effects }) => {
@@ -57,7 +63,10 @@ export const main = sdk.setupMain(async ({ effects }) => {
   // skill dirs to load. Secrets are NOT resolved here — skills call rbw at
   // runtime using the *_FROM_VAULT markers, matching the proven pattern.
   const externalEnv: Record<string, string> = {}
-  const enabledSkills: string[] = ['/opt/skills/start-cli', '/opt/skills/qdrant']
+  const enabledSkills: string[] = [
+    '/opt/skills/start-cli',
+    '/opt/skills/qdrant',
+  ]
 
   const vw = ext?.vaultwarden
   if (vw?.enabled) {
@@ -229,58 +238,143 @@ export const main = sdk.setupMain(async ({ effects }) => {
         },
         requires: [],
       })
-      // Configure rbw and unlock the vault if Vaultwarden is enabled. Uses a
-      // persistent rbw-agent started via setsid so it survives the exec return.
-      .addOneshot('setup-vault', {
+      // Host mappings (/etc/hosts) and custom CA certs. Independent of
+      // Vaultwarden: any internal service may need them. .local names never
+      // resolve on StartOS (startd treats them as mDNS), hence /etc/hosts.
+      .addOneshot('network-setup', {
         subcontainer: openclawSub,
         exec: {
           fn: async (subcontainer) => {
-            if (!vw?.enabled || !vw.url || !vw.email || !vw.apiKey || !vw.masterPassword) {
-              console.info('Vaultwarden not fully configured — skipping vault setup')
-              return null
+            try {
+              const rootfs = await subcontainer.rootfs
+              const hostsPath = `${rootfs}/etc/hosts`
+              const existing = await readFile(hostsPath, 'utf-8').catch(
+                () => '127.0.0.1\tlocalhost\n',
+              )
+              const mappings = ext?.hostMappings ?? []
+              await subcontainer.writeFile(
+                '/etc/hosts',
+                applyHostsBlock(existing, mappings),
+              )
+              console.info(`Wrote ${mappings.length} custom host mapping(s)`)
+            } catch (e) {
+              console.error('Failed to write /etc/hosts mappings:', e)
             }
 
-            // Write rbw config
-            const rbwConfig = JSON.stringify({
-              email: vw.email,
-              base_url: vw.url,
-              lock_timeout: 3600,
-            })
-            await subcontainer.writeFile(
-              '/data/.openclaw/rbw/config/rbw/config.json',
-              rbwConfig,
-            )
-
-            // Start agent detached so it outlives this exec
-            await subcontainer.exec(
-              ['sh', '-c', 'setsid rbw-agent >/dev/null 2>&1 < /dev/null &'],
-              { user: 'node', env: RBW_ENV },
-            )
-            await new Promise((r) => setTimeout(r, 2000))
-
-            // Login with API key (client_secret) via env, then unlock with
-            // master password. rbw reads secrets from stdin/env non-interactively.
-            const login = await subcontainer.exec(
-              ['sh', '-c', 'printf "%s" "$RBW_API_KEY" | rbw login'],
-              { user: 'node', env: { ...RBW_ENV, RBW_API_KEY: vw.apiKey } },
-            )
-            if (login.exitCode !== 0) {
-              console.error('rbw login failed:', String(login.stderr))
-            }
-
-            const unlock = await subcontainer.exec(
-              ['sh', '-c', 'printf "%s" "$RBW_PASS" | rbw unlock'],
-              { user: 'node', env: { ...RBW_ENV, RBW_PASS: vw.masterPassword } },
-            )
-            if (unlock.exitCode !== 0) {
-              console.error('rbw unlock failed:', String(unlock.stderr))
-            } else {
-              console.info('Vault unlocked successfully')
+            try {
+              const certs = splitPemCerts(ext?.caCert)
+              await subcontainer.exec(
+                ['sh', '-c', `rm -f ${CUSTOM_CA_DIR}/${CUSTOM_CA_PREFIX}*.crt`],
+                { user: 'root' },
+              )
+              for (const [n, pem] of certs.entries()) {
+                await subcontainer.writeFile(
+                  `${CUSTOM_CA_DIR}/${CUSTOM_CA_PREFIX}${n}.crt`,
+                  pem + '\n',
+                  { mode: 0o644 },
+                )
+              }
+              const res = await subcontainer.exec(['update-ca-certificates'], {
+                user: 'root',
+              })
+              if (res.exitCode !== 0) {
+                console.error(
+                  'update-ca-certificates failed:',
+                  String(res.stderr),
+                )
+              } else {
+                console.info(`Installed ${certs.length} custom CA cert(s)`)
+              }
+            } catch (e) {
+              console.error('Failed to install custom CA certificates:', e)
             }
             return null
           },
         },
-        requires: ['install-root-ca', 'chown'],
+        requires: ['install-root-ca'],
+      })
+      // Configure rbw and unlock the vault (proven manual sequence):
+      // master password in rbw/.credentials, answered by a file-based
+      // pinentry, so login/unlock are non-interactive. Because pinentry is
+      // non-interactive, a later `rbw get` from a skill also re-unlocks on
+      // its own if the agent died or the lock timeout passed. Never fatal.
+      .addOneshot('setup-vault', {
+        subcontainer: openclawSub,
+        exec: {
+          fn: async (subcontainer) => {
+            if (!vw?.enabled || !vw.url || !vw.email) {
+              console.info(
+                'Vaultwarden not enabled/configured — skipping vault setup',
+              )
+              return null
+            }
+            try {
+              let haveCreds = await access(credentialsVolumePath)
+                .then(() => true)
+                .catch(() => false)
+              // One-time seed from the legacy settings field (<= :1).
+              if (!haveCreds && vw.masterPassword) {
+                await writeMasterPassword(vw.masterPassword)
+                haveCreds = true
+                console.info('Seeded rbw/.credentials from legacy settings')
+              }
+              if (!haveCreds) {
+                console.error(
+                  'Vaultwarden enabled but no master password saved — enter it in Configure External Services. Skipping vault setup.',
+                )
+                return null
+              }
+
+              await subcontainer.writeFile(RBW_PINENTRY, PINENTRY_SCRIPT, {
+                mode: 0o755,
+              })
+              await subcontainer.writeFile(
+                RBW_CONFIG,
+                JSON.stringify({
+                  email: vw.email,
+                  base_url: vw.url.replace(/\/+$/, ''),
+                  lock_timeout: 3600,
+                  pinentry: RBW_PINENTRY,
+                }),
+                { mode: 0o644 },
+              )
+              await subcontainer.exec(
+                [
+                  'sh',
+                  '-c',
+                  `chown -R node:node ${RBW_DIR} && chmod 600 ${RBW_CREDENTIALS} && chmod 755 ${RBW_PINENTRY}`,
+                ],
+                { user: 'root' },
+              )
+
+              // rbw spawns (and daemonizes) rbw-agent itself. stop-agent
+              // clears any stale agent holding an old config.
+              const script = [
+                'rbw stop-agent >/dev/null 2>&1 || true',
+                'sleep 1',
+                'timeout 90 rbw login || echo "rbw login: exit $?" >&2',
+                'timeout 90 rbw unlock || echo "rbw unlock: exit $?" >&2',
+                'timeout 120 rbw sync || echo "rbw sync: exit $?" >&2',
+                'rbw unlocked',
+              ].join('\n')
+              const res = await subcontainer.exec(['sh', '-c', script], {
+                user: 'node',
+                env: RBW_ENV,
+              })
+              if (res.exitCode === 0) {
+                console.info('Vault unlocked successfully')
+              } else {
+                console.error(
+                  `Vault setup did not unlock (exit ${res.exitCode}): ${String(res.stderr).trim()}`,
+                )
+              }
+            } catch (e) {
+              console.error('Vault setup failed (non-fatal):', e)
+            }
+            return null
+          },
+        },
+        requires: ['install-root-ca', 'chown', 'network-setup'],
       })
       .addDaemon('qdrant', {
         subcontainer: qdrantSub,
@@ -345,7 +439,13 @@ export const main = sdk.setupMain(async ({ effects }) => {
                 }),
           gracePeriod: 40_000,
         },
-        requires: ['install-root-ca', 'chown', 'setup-vault', 'qdrant'],
+        requires: [
+          'install-root-ca',
+          'chown',
+          'network-setup',
+          'setup-vault',
+          'qdrant',
+        ],
       })
       .addOneshot('check-login', {
         subcontainer: openclawSub,
