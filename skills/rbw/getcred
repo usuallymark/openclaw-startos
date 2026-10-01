@@ -1,0 +1,56 @@
+#!/bin/sh
+# getcred VAR — print a credential configured in Configure External Services.
+#
+# If VAR is set in the environment ("Enter manually"), print it.
+# Otherwise, if VAR_FROM_VAULT is set ("Fetch from Vaultwarden", value
+# "<entry>:<field>"), fetch that field from Vaultwarden with rbw and print it.
+# The value is printed without a trailing newline. Exits non-zero, with a
+# message on stderr only, if the credential is not configured or the lookup
+# fails. Secrets never appear in error messages.
+set -u
+
+usage() {
+  echo "usage: getcred VAR   (e.g. getcred NAS_PASS)" >&2
+  exit 2
+}
+
+[ $# -eq 1 ] || usage
+var=$1
+case $var in
+  '' | *[!A-Za-z0-9_]* | [0-9]*) usage ;;
+esac
+
+eval "plain=\${$var-}"
+if [ -n "$plain" ]; then
+  printf '%s' "$plain"
+  exit 0
+fi
+
+eval "pointer=\${${var}_FROM_VAULT-}"
+if [ -z "$pointer" ]; then
+  echo "getcred: $var is not configured (enable the service in Configure External Services)" >&2
+  exit 1
+fi
+
+entry=${pointer%%:*}
+field=${pointer#*:}
+if [ -z "$entry" ] || [ "$field" = "$pointer" ] || [ -z "$field" ]; then
+  echo "getcred: ${var}_FROM_VAULT must look like <entry>:<field>" >&2
+  exit 1
+fi
+
+# rbw locations used by the package (also set in the gateway environment).
+: "${XDG_CONFIG_HOME:=/data/.openclaw/rbw/config}"
+: "${XDG_CACHE_HOME:=/data/.openclaw/rbw/cache}"
+: "${XDG_RUNTIME_DIR:=/data/.openclaw/rbw/runtime}"
+export XDG_CONFIG_HOME XDG_CACHE_HOME XDG_RUNTIME_DIR
+
+if ! value=$(rbw get --field "$field" "$entry" 2>/dev/null); then
+  echo "getcred: Vaultwarden lookup failed for entry \"$entry\", field \"$field\" ($var). Check that Vaultwarden is enabled and the entry and field exist." >&2
+  exit 1
+fi
+if [ -z "$value" ]; then
+  echo "getcred: Vaultwarden entry \"$entry\", field \"$field\" is empty ($var)" >&2
+  exit 1
+fi
+printf '%s' "$value"

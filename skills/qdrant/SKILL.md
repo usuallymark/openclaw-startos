@@ -27,8 +27,7 @@ QDRANT_KEY = os.environ.get('QDRANT_API_KEY', '')
 ### Search (semantic similarity)
 
 ```python
-import json, urllib.request, os, sys
-sys.path.insert(0, '/data/.openclaw/python-libs')
+import json, urllib.request, os
 
 QDRANT_URL = os.environ.get('QDRANT_URL', 'http://localhost:6333')
 

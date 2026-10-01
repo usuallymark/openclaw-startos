@@ -1,83 +1,82 @@
 ---
 name: nas
-description: "Use this skill to read and write files on the NAS (Network Attached Storage) via SMB. Triggers: any time you need to access files, photos, documents, or other content stored on the NAS."
+description: "Use this skill to read and write files on the NAS (Network Attached Storage) via SMB. Triggers: any time you need to access files, photos, documents, or other content stored on the NAS, or to find out which NAS shares exist."
 ---
 
 # NAS — Network Attached Storage
 
 ## Purpose
 
-Access files on a NAS (Network Attached Storage) server via SMB/CIFS.
-Used for reading and writing files, photos, documents, and other content
-that lives on your network storage.
+Read and write files on the NAS over SMB. The NAS account configured in
+Configure External Services decides which shares and folders are reachable;
+any share that account can open is fair game. If an operation is refused,
+the account lacks permission there: say so rather than trying to work
+around it.
 
-## Connection
+## Setup facts
 
-Credentials come from environment variables (set by OpenClaw at startup,
-sourced from Configure External Services settings or Vaultwarden):
+- Host: `NAS_HOST`. Credentials: `getcred NAS_USER` / `getcred NAS_PASS`
+  (works for both "Enter manually" and "Fetch from Vaultwarden").
+  Never print, log, or store the credentials.
+- `NAS_SHARES` (comma-separated, may be empty) lists the shares the user
+  named as the usual places to look. It is a hint, not a limit.
+- Use the helper module below. It handles credentials, sessions, and paths.
+  Do not hardcode hosts, shares, or passwords.
 
-```python
-import os, sys
-sys.path.insert(0, '/data/.openclaw/python-libs')
-
-NAS_HOST = os.environ.get('NAS_HOST')
-NAS_SHARE = os.environ.get('NAS_SHARE')
-NAS_USER = os.environ.get('NAS_USER')
-NAS_PASS = os.environ.get('NAS_PASS')
-
-if not all([NAS_HOST, NAS_SHARE, NAS_USER, NAS_PASS]):
-    raise RuntimeError('NAS is not configured. Enable it in Configure External Services.')
-```
-
-## Read a File
+## Helper
 
 ```python
-import smbclient, os, sys
-sys.path.insert(0, '/data/.openclaw/python-libs')
+import sys; sys.path.insert(0, '/opt/skills/nas')
+import nas
 
-NAS_HOST = os.environ['NAS_HOST']
-NAS_USER = os.environ['NAS_USER']
-NAS_PASS = os.environ['NAS_PASS']
-NAS_SHARE = os.environ['NAS_SHARE']
-
-smbclient.register_session(NAS_HOST, username=NAS_USER, password=NAS_PASS)
-
-path = rf'\\{NAS_HOST}\{NAS_SHARE}\path\to\file.txt'
-with smbclient.open_file(path, mode='r') as f:
-    content = f.read()
-print(content)
+nas.preferred_shares()             # ['Alfred', ...] from the config (may be [])
+nas.shares()                       # [{'name': 'Photos', 'comment': '...'}, ...] the account can see
+nas.listdir('Photos', '2024/June') # names in a folder ('' = share root)
+nas.scandir('Photos', '2024')      # [(name, is_dir, size), ...]
+nas.exists('Alfred', 'notes/todo.txt')
+nas.read_text('Alfred', 'notes/todo.txt')
+nas.read_bytes('Photos', '2024/June/IMG_0001.jpg')
+nas.write_text('Alfred', 'notes/out.txt', 'hello')     # creates folders as needed
+nas.write_bytes('Alfred', 'reports/q3.pdf', data)
+nas.makedirs('Alfred', 'reports/2026')
 ```
 
-## Write a File
+Paths are relative to the share root; `/` or `\` both work; `..` is
+rejected. Errors raise `nas.NasError` (configuration, credentials, share
+listing) or the usual `OSError` subclasses from `smbclient`
+(`FileNotFoundError`, `PermissionError`).
+
+For anything not covered, `nas.unc(share, path)` returns the UNC path and
+the `smbclient` module (smbprotocol) is importable after `import nas`, e.g.
+`smbclient.remove(nas.unc('Alfred', 'tmp/old.txt'))`, `smbclient.rename(...)`,
+`smbclient.stat(...)`.
+
+## Finding the right share
+
+1. If the user named a share, use it.
+2. Otherwise try `nas.preferred_shares()` first.
+3. Otherwise call `nas.shares()` and pick by name/comment, or ask the user.
+
+## Images for vision analysis
 
 ```python
-path = rf'\\{NAS_HOST}\{NAS_SHARE}\path\to\output.txt'
-with smbclient.open_file(path, mode='w') as f:
-    f.write('content here')
+import base64, sys; sys.path.insert(0, '/opt/skills/nas')
+import nas
+img_b64 = base64.b64encode(nas.read_bytes('Photos', '2024/June/IMG_0001.jpg')).decode()
+# pass img_b64 to the Ollama vision model (see the ollama skill)
 ```
 
-## Read an Image (for vision analysis)
+## Quick check
 
-```python
-import base64
-
-path = rf'\\{NAS_HOST}\{NAS_SHARE}\Photos\image.jpg'
-with smbclient.open_file(path, mode='rb') as f:
-    img_b64 = base64.b64encode(f.read()).decode()
-# Pass img_b64 to Ollama vision model
-```
-
-## List Directory Contents
-
-```python
-entries = smbclient.listdir(rf'\\{NAS_HOST}\{NAS_SHARE}\path\to\folder')
-for entry in entries:
-    print(entry)
-```
+`python3 /opt/skills/nas/nas.py [share]` prints the host, preferred shares,
+visible shares, and the first entries of one share. Use it to diagnose
+connection or permission problems.
 
 ## Notes
 
-- Always use raw strings (`r'...'`) or double backslashes for SMB paths
-- The `smbclient` package is pre-installed in `/data/.openclaw/python-libs/`
-- Sessions are reused automatically within the same Python process
-- For large files, use binary mode (`'rb'`/`'wb'`) not text mode
+- Deleting or overwriting files on the NAS: confirm with the user first
+  unless they asked for exactly that.
+- Large files: read/write in binary mode; for very large files open
+  `smbclient.open_file(nas.unc(...), 'rb')` and stream in chunks.
+- The SMB tooling ships in the image (`/opt/python-libs`, Samba `smbclient`).
+  Older notes that point at `/data/.openclaw/python-libs` are out of date.

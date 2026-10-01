@@ -14,8 +14,10 @@ PDFs, extract text, and convert documents to other formats.
 
 ```python
 import os
+import sys; sys.path.insert(0, '/opt/skills/rbw')
+from creds import getcred
 STIRLING_URL = os.environ.get('STIRLING_URL')
-STIRLING_KEY = os.environ.get('STIRLING_KEY', '')
+STIRLING_KEY = getcred('STIRLING_KEY', required=False)
 
 if not STIRLING_URL:
     raise RuntimeError('Stirling PDF is not configured. Enable it in Configure External Services.')
@@ -25,9 +27,11 @@ if not STIRLING_URL:
 
 ```python
 import urllib.request, os
+import sys; sys.path.insert(0, '/opt/skills/rbw')
+from creds import getcred
 
 STIRLING_URL = os.environ['STIRLING_URL']
-STIRLING_KEY = os.environ.get('STIRLING_KEY', '')
+STIRLING_KEY = getcred('STIRLING_KEY', required=False)
 
 def ocr_pdf(pdf_path, language='eng'):
     with open(pdf_path, 'rb') as f:
@@ -63,6 +67,7 @@ def ocr_pdf(pdf_path, language='eng'):
 
 ## Notes
 
+- `STIRLING_KEY` comes from `getcred` (manual entry or Vaultwarden). Never print or store it.
 - Supported languages: `eng` (English), `fra` (French), `deu` (German), etc.
 - OCR output is a searchable PDF, not plain text — use a PDF reader to extract text
 - For large documents, increase the timeout

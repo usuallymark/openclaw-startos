@@ -32,6 +32,23 @@ The vault is unlocked automatically at startup if Vaultwarden is configured.
 rbw uses a non-interactive pinentry, so if the vault has locked (timeout or
 agent restart), the next `rbw get` unlocks it again on its own.
 
+## Credentials of configured services: use getcred
+
+For credentials set in Configure External Services (`NAS_USER`, `NAS_PASS`,
+`N8N_KEY`, `TRILIUM_KEY`, `STIRLING_KEY`), always use `getcred`. It returns
+the value whether the user chose "Enter manually" or "Fetch from
+Vaultwarden" (the `<VAR>_FROM_VAULT` pointers are resolved for you):
+
+```python
+import sys; sys.path.insert(0, '/opt/skills/rbw')
+from creds import getcred
+key = getcred('N8N_KEY')                       # raises if not configured
+key = getcred('STIRLING_KEY', required=False)  # '' if not configured
+```
+
+From a shell: `getcred N8N_KEY` (prints without a newline; exit 1 if not
+configured). Use `rbw get` directly only for other vault entries.
+
 ## Fetching a Credential
 
 ```bash

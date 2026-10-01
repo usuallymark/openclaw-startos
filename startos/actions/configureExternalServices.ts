@@ -41,6 +41,15 @@ const credentialUnion = (
     variants: credentialVariants(entryName, fieldName),
   })
 
+// "Alfred, Photos ,,x" -> "Alfred, Photos, x"; blank -> undefined.
+const normalizeShares = (raw: unknown): string | undefined => {
+  const list = String(raw ?? '')
+    .split(',')
+    .map((x) => x.trim().replace(/^[\\/]+|[\\/]+$/g, ''))
+    .filter((x) => x.length > 0)
+  return list.length ? Array.from(new Set(list)).join(', ') : undefined
+}
+
 const urlField = (label: string, description: string, placeholder: string) =>
   Value.text({
     name: label,
@@ -126,11 +135,15 @@ const nasService = Value.union({
           'IP address or hostname of your NAS, e.g. 192.168.0.16',
           '192.168.0.x',
         ),
-        share: urlField(
-          'Share Name',
-          'The SMB share name to connect to, e.g. "Alfred". This is the top-level share, not a subfolder.',
-          'Alfred',
-        ),
+        share: Value.text({
+          name: 'Preferred Shares (optional)',
+          description:
+            'Comma-separated SMB share names the agent should look in first, e.g. "Alfred, Photos". Leave blank to let the agent pick. This is a hint, not a restriction: the agent can use every share the NAS account below is allowed to open. To limit access, give that account permissions only on the shares it should use.',
+          required: false,
+          default: null,
+          masked: false,
+          placeholder: 'Alfred, Photos',
+        }),
         username: credentialUnion(
           'Username',
           'NAS',
@@ -417,7 +430,7 @@ export const configureExternalServices = sdk.Action.withInput(
             selection: 'enabled' as const,
             value: {
               host: nas.host ?? '',
-              share: nas.share ?? '',
+              share: nas.share || null,
               username: credToPrefill(nas.username),
               password: credToPrefill(nas.password),
             },
@@ -506,7 +519,7 @@ export const configureExternalServices = sdk.Action.withInput(
         ? {
             enabled: true,
             host: i.nas.value.host,
-            share: i.nas.value.share,
+            share: normalizeShares(i.nas.value.share),
             username: credToStored(i.nas.value.username),
             password: credToStored(i.nas.value.password),
           }

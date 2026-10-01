@@ -14,8 +14,10 @@ workflows, pass data between systems, and monitor background processes.
 
 ```python
 import os
+import sys; sys.path.insert(0, '/opt/skills/rbw')
+from creds import getcred
 N8N_URL = os.environ.get('N8N_URL')
-N8N_KEY = os.environ.get('N8N_KEY')
+N8N_KEY = getcred('N8N_KEY', required=False)  # only the REST API needs it
 
 if not N8N_URL:
     raise RuntimeError('n8n is not configured. Enable it in Configure External Services.')
@@ -46,9 +48,11 @@ result = trigger_webhook('my-workflow-id', {'key': 'value'})
 
 ```python
 import json, urllib.request, os
+import sys; sys.path.insert(0, '/opt/skills/rbw')
+from creds import getcred
 
 N8N_URL = os.environ['N8N_URL']
-N8N_KEY = os.environ['N8N_KEY']
+N8N_KEY = getcred('N8N_KEY')
 
 req = urllib.request.Request(
     f'{N8N_URL}/api/v1/workflows',
@@ -62,6 +66,7 @@ for wf in workflows.get('data', []):
 
 ## Notes
 
+- `N8N_KEY` comes from `getcred` (manual entry or Vaultwarden). Never print or store it.
 - Webhook URLs don't require authentication
 - API calls require the `X-N8N-API-KEY` header
 - n8n may use self-signed TLS — if SSL errors occur, the URL may need to use http://

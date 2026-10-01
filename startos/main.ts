@@ -95,7 +95,17 @@ export const main = sdk.setupMain(async ({ effects }) => {
 
   if (ext?.nas?.enabled) {
     if (ext.nas.host) externalEnv['NAS_HOST'] = ext.nas.host
-    if (ext.nas.share) externalEnv['NAS_SHARE'] = ext.nas.share
+    // Preferred shares are a hint for the skill, not a restriction: any share
+    // the NAS account can open is usable. NAS_SHARE (first entry) is kept for
+    // older scripts that expect a single share.
+    const shares = (ext.nas.share ?? '')
+      .split(',')
+      .map((x) => x.trim())
+      .filter((x) => x.length > 0)
+    if (shares.length) {
+      externalEnv['NAS_SHARES'] = shares.join(',')
+      externalEnv['NAS_SHARE'] = shares[0]
+    }
     const u = ext.nas.username
     if (u?.source === 'manual' && u.value) {
       externalEnv['NAS_USER'] = u.value

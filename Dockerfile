@@ -36,6 +36,20 @@ RUN mkdir -p /data && \
 RUN curl -fsSL "https://github.com/Start9Labs/start-technologies/releases/download/start-cli%2Fv${START_CLI_VERSION}/start-cli_$(uname -m)-linux" -o /usr/local/bin/start-cli \
     && chmod +x /usr/local/bin/start-cli
 
+# SMB for the NAS skill: Samba's smbclient (lists shares) and the Python
+# smbprotocol library (file access), hash-pinned in skills/nas/requirements.txt.
+# Installed in the image so nothing depends on files in the data volume.
+RUN apt-get update && apt-get install -y --no-install-recommends smbclient \
+    && rm -rf /var/lib/apt/lists/*
+COPY skills/nas/requirements.txt /tmp/nas-requirements.txt
+RUN uv pip install --python /usr/bin/python3 --target /opt/python-libs \
+        --require-hashes --only-binary :all: --no-cache \
+        -r /tmp/nas-requirements.txt \
+    && rm /tmp/nas-requirements.txt \
+    && PYTHONPATH=/opt/python-libs python3 -c 'import smbclient' \
+    && smbclient --version
+ENV PYTHONPATH=/opt/python-libs
+
 # Install pinentry-curses (required by rbw)
 RUN apt-get update && apt-get install -y --no-install-recommends pinentry-curses && rm -rf /var/lib/apt/lists/*
 
@@ -65,10 +79,12 @@ RUN ARCH="$(dpkg --print-architecture)" && \
 # start-cli skill (always loaded)
 COPY skills/start-cli/SKILL.md /opt/skills/start-cli/SKILL.md
 # External service skills (loaded when service is enabled via Configure External Services)
-COPY skills/rbw/SKILL.md /opt/skills/rbw/SKILL.md
+COPY skills/rbw/SKILL.md skills/rbw/creds.py /opt/skills/rbw/
+COPY skills/rbw/getcred /usr/local/bin/getcred
+RUN chmod 755 /usr/local/bin/getcred
 COPY skills/qdrant/SKILL.md /opt/skills/qdrant/SKILL.md
 COPY skills/ollama/SKILL.md /opt/skills/ollama/SKILL.md
-COPY skills/nas/SKILL.md /opt/skills/nas/SKILL.md
+COPY skills/nas/SKILL.md skills/nas/nas.py /opt/skills/nas/
 COPY skills/n8n/SKILL.md /opt/skills/n8n/SKILL.md
 COPY skills/trilium/SKILL.md /opt/skills/trilium/SKILL.md
 COPY skills/stirling/SKILL.md /opt/skills/stirling/SKILL.md

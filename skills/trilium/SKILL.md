@@ -15,8 +15,10 @@ should persist outside of AI memory.
 
 ```python
 import os
+import sys; sys.path.insert(0, '/opt/skills/rbw')
+from creds import getcred
 TRILIUM_URL = os.environ.get('TRILIUM_URL')
-TRILIUM_KEY = os.environ.get('TRILIUM_KEY')
+TRILIUM_KEY = getcred('TRILIUM_KEY')
 
 if not TRILIUM_URL:
     raise RuntimeError('Trilium is not configured. Enable it in Configure External Services.')
@@ -26,9 +28,11 @@ if not TRILIUM_URL:
 
 ```python
 import json, urllib.request, os
+import sys; sys.path.insert(0, '/opt/skills/rbw')
+from creds import getcred
 
 TRILIUM_URL = os.environ['TRILIUM_URL']
-TRILIUM_KEY = os.environ['TRILIUM_KEY']
+TRILIUM_KEY = getcred('TRILIUM_KEY')
 
 def trilium_create_note(parent_note_id, title, content, note_type='text'):
     body = json.dumps({
@@ -80,6 +84,7 @@ def trilium_get_note(note_id):
 
 ## Notes
 
+- `TRILIUM_KEY` comes from `getcred` (manual entry or Vaultwarden). Never print or store it.
 - The URL should include the `/etapi` path, e.g. `https://trilium.yourdomain.local/etapi`
 - Content is HTML for text notes; use plain `<p>` tags for simple notes
 - `root` is the top-level parent note ID
