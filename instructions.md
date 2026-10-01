@@ -121,6 +121,42 @@ and configuration are preserved automatically.
 
 ---
 
+## Webchat (optional)
+
+A mobile-friendly chat app with one profile per person. It is **off by
+default**.
+
+1. Run **Configure Webchat**, choose **Enabled**, and add a profile for each
+   person: a short ID (e.g. `alex`), a display name, a color, and optionally a
+   greeting prompt, preset conversations (one per line) and a PIN.
+2. Save. OpenClaw restarts and a **Webchat** address appears under
+   **Interfaces**.
+3. Open that address on each phone. With more than one profile you'll see a
+   picker; each profile lives at `/u/<id>/`. Use **Add to Home Screen** to
+   install it as an app.
+
+**Privacy:** anyone who can reach the Webchat address can open profiles that
+have no PIN. Each profile only sees its own conversations. A PIN is asked once
+per device and remembered for the period you choose; setting a new PIN signs
+out every device for that profile. On iPhone, the home-screen app asks once
+more after installing because it keeps its own storage.
+
+**Avatar:** a default avatar is included. To use your own, paste it into
+**Avatar image** in Configure Webchat as base64 text (PNG, JPEG or WebP, up to
+1 MB). On a Mac: `base64 -i picture.jpg | pbcopy`, then paste. A square image
+of 512×512 or larger looks best as a home-screen icon. To give one profile its
+own picture, place `avatars/<id>.png` (or `.jpg`/`.webp`) in
+`/data/.openclaw/webchat/`.
+
+**Files:** while the webchat is on, the agent can send files as download
+buttons (links expire after 24 hours).
+
+Deleting a conversation in the webchat archives it in OpenClaw rather than
+erasing it; "clear" on General starts a fresh General conversation the same
+way.
+
+---
+
 ## Troubleshooting
 
 **Health check shows "not ready":**
@@ -142,6 +178,10 @@ API keys. A red check names the address that failed. "Could not resolve host"
 usually means a `.local` name without a Custom Host Mapping; a certificate
 error means the Custom CA Certificate is missing. The vault check performs a
 full unlock every 5 minutes, so a wrong master password shows up quickly.
+
+**Webchat shows "Reconnecting…":**
+The webchat is running but cannot reach the OpenClaw gateway. Check the
+**Webchat** health check and the service logs (lines start with `[webchat]`).
 
 **Skills not working after enabling a service:**
 OpenClaw must be restarted after configuring external services. The restart

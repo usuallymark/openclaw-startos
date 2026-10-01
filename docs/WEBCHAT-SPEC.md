@@ -1,6 +1,6 @@
 # Webchat — build spec
 
-Status: draft for review · Target version: `2026.9.4:3` · Gateway: openclaw `2026.9.4`
+Status: implemented in `2026.9.4:4` (see §11 for changes made during the build) · Gateway: openclaw `2026.9.4`
 
 A lightweight, mobile-first chat UI for OpenClaw with multiple **profiles**
 (one per person), bundled in this package. **Disabled by default.** Everything
@@ -191,9 +191,57 @@ All under `/data`, so StartOS backups cover them.
   packaged skill).
 - Retire and rotate the old 0.3.x gateway token if it is still valid anywhere.
 
-## 10. Open questions
+## 10. Findings from the connection spike (2026-10-01, on the target box)
 
-- Event names for streaming in 2026.9.4 (old page used `chat.agent.token` /
-  `agent.*`) — settled by step 1.
-- Whether `sessions.list` supports a key-prefix filter server-side or we
-  filter after fetching.
+Spike: `@openclaw/gateway-client@2026.9.4` bundled to one file, run as `node`
+inside the openclaw subcontainer against the live gateway. **PASS.**
+
+- `ws://127.0.0.1:18789` reachable; password auth over loopback succeeds with
+  `clientName: gateway-client`, `mode: backend`, `role: operator`, scopes
+  `operator.read,operator.write`. Protocol 4. No pairing approval needed.
+- All required methods present: `chat.send`, `chat.history`, `chat.abort`,
+  `sessions.list`, `sessions.reset`, `sessions.delete`.
+- Streaming is a single `chat` event with `payload.state` =
+  `status` | `delta` (`deltaText`) | `final` (`message`, `stopReason`) |
+  `aborted` | `error` (`errorMessage`). The old page's `chat.agent.*` /
+  `agent.*` names are gone. Raw `agent` events also arrive (tool/stream
+  detail) and can be ignored or used for typing indicators.
+- `chat.send` requires `idempotencyKey`; returns `{ runId, status }`.
+- `sessions.list` returns `{ sessions: [...] }` with no key-prefix filter, so
+  the server filters by profile prefix after fetching. Rows carry `label`,
+  `displayName`, `updatedAt`, `archived`, `pinned`, `unread`,
+  `hasActiveRun` — conversation names can use the gateway's own label
+  (via `sessions.patch`) instead of a separate name map.
+- `chat.history` entries: `role`, `content`, `timestamp`, `idempotencyKey`.
+- `chat.metadata.changed` is chatty (≈20 per turn) — do not forward to
+  browsers.
+- Bundling: gateway-client loads `ws` through `require.resolve` at runtime;
+  the build must inline it (esbuild plugin) and be tested from an empty
+  directory.
+
+## 11. Changes made during the build
+
+- **Session namespace:** profile sessions are `agent:main:wc-<id>` (and
+  `agent:main:wc-<id>:<slug>`), not `agent:main:<id>`, so no profile id can
+  collide with OpenClaw's own keys (`agent:main:main`, `agent:main:cron:*`,
+  channel sessions).
+- **No admin scope:** `sessions.delete` and `sessions.reset` require
+  `operator.admin`; the webchat keeps `operator.read`/`operator.write`.
+  Deleting a conversation **archives** it (`sessions.patch` with
+  `archived: true` + `expectedSessionId`). Clearing General archives the
+  current General session and moves General to a fresh key
+  (`agent:main:wc-<id>:general-<ts>`), recorded in the profile state file.
+- **Names:** stored in the profile state file and mirrored to the gateway
+  label (`sessions.patch` `label`) so they also show in the Control UI.
+- **Lockout:** per address (5 tries, then 5 min doubling) and per profile
+  (20 tries in 10 min from any addresses → 15 min). Only the last
+  `X-Forwarded-For` entry (added by the StartOS proxy) is trusted.
+- **Downloads** require a valid profile cookie only when every profile has a
+  PIN; otherwise the unguessable 128-bit token is the protection.
+- **No bundling in the image:** `/opt/webchat` is installed with
+  `npm ci --omit=dev` from the committed lockfile.
+
+Testing (local, against a real openclaw 2026.9.4 gateway and a fake
+OpenAI-compatible model): 49 protocol/security checks, 33 browser checks
+(desktop + mobile, Playwright), 13 action save/prefill checks, clean-install
+run, gateway-restart recovery.

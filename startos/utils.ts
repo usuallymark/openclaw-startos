@@ -4,6 +4,10 @@ import { sdk } from './sdk'
 
 export const uiPort = 18789
 export const qdrantPort = 6333
+// Webchat: public HTTP port (exported as an interface when enabled) and a
+// loopback-only port the agent uses to hand files to the user.
+export const webchatPort = 18800
+export const webchatUploadPort = 18801
 
 // start-cli release whose binary the image installs (see UPDATING.md).
 export const START_CLI_VERSION = '1.1.0'

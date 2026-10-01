@@ -1,13 +1,15 @@
 import { IMPOSSIBLE, VersionInfo } from '@start9labs/start-sdk'
 
 export const current = VersionInfo.of({
-  version: '2026.9.4:3',
+  version: '2026.9.4:4',
   releaseNotes: {
-    en_US: `Adds health checks for the vault and external services.
+    en_US: `Adds an optional, mobile-friendly **Webchat** (off by default).
 
-- **Vault (rbw)**: every 5 minutes, confirms the vault unlocks end-to-end (master password, pinentry and Vaultwarden connection).
-- **External services**: each enabled service in Configure External Services (Vaultwarden, Ollama, NAS, n8n, Trilium, Stirling PDF, SearXNG, Firecrawl) gets a reachability check every minute, run from inside the service so host mappings and custom CA certificates apply. No credentials are sent.
-- **Qdrant**: now waits for Qdrant's own readiness endpoint, not just an open port.`,
+- Turn it on with the new **Configure Webchat** action. Add one profile per person, each with its own name, color, optional greeting, preset conversations and optional PIN. Each profile gets its own address and can be added to a phone's home screen as its own app.
+- Each profile only sees its own conversations. The browser never receives the gateway password: the webchat server talks to OpenClaw on the person's behalf.
+- A PIN is asked once per device and remembered (90 days by default). Changing a PIN signs out every device for that profile; repeated wrong PINs are locked out.
+- The agent can hand files to the person as download buttons (new **webchat-present** skill, loaded while the webchat is on).
+- A **Webchat** health check goes green once the webchat is connected to OpenClaw.`,
   },
   migrations: {
     up: async () => {},

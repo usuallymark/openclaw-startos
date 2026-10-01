@@ -74,6 +74,15 @@ COPY skills/trilium/SKILL.md /opt/skills/trilium/SKILL.md
 COPY skills/stirling/SKILL.md /opt/skills/stirling/SKILL.md
 COPY skills/searxng/SKILL.md /opt/skills/searxng/SKILL.md
 COPY skills/firecrawl/SKILL.md /opt/skills/firecrawl/SKILL.md
+COPY skills/webchat-present/SKILL.md /opt/skills/webchat-present/SKILL.md
+
+# Webchat (optional; started only when enabled via Configure Webchat).
+# Dependencies are pinned in webchat/package-lock.json.
+COPY webchat/package.json webchat/package-lock.json /opt/webchat/
+RUN cd /opt/webchat && npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
+COPY webchat/server.mjs webchat/present.mjs /opt/webchat/
+COPY webchat/ui /opt/webchat/ui
+COPY webchat/assets /opt/webchat/assets
 
 # Stage workspace bootstrap files
 COPY workspace/SOUL.md /opt/workspace/SOUL.md

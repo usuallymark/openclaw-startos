@@ -12,7 +12,15 @@ import {
   qdrantInternalPort,
 } from './interfaces'
 import { sdk } from './sdk'
-import { mainMounts, qdrantMounts, uiPort, qdrantPort } from './utils'
+import {
+  mainMounts,
+  qdrantMounts,
+  uiPort,
+  qdrantPort,
+  webchatPort,
+  webchatUploadPort,
+} from './utils'
+import { webchatJson } from './fileModels/webchat.json'
 import { watchSimplexAddress, withSimplexMounts } from './simplex'
 import { requestSimplexPluginUpgrade } from './actions/configureSimplex'
 import {
@@ -32,6 +40,7 @@ import {
 import {
   externalChecks,
   externalTrigger,
+  probeHttp,
   probeVault,
   vaultTrigger,
 } from './healthChecks'
@@ -145,6 +154,14 @@ export const main = sdk.setupMain(async ({ effects }) => {
     enabledSkills.push('/opt/skills/firecrawl')
   }
 
+  // Webchat (Configure Webchat). Reactive: main re-runs when it changes.
+  const webchatEnabled =
+    (await webchatJson.read((c) => c.enabled).const(effects)) ?? false
+  if (webchatEnabled) {
+    externalEnv['WEBCHAT_UPLOAD_URL'] = `http://127.0.0.1:${webchatUploadPort}`
+    enabledSkills.push('/opt/skills/webchat-present')
+  }
+
   const osIp = await sdk.getOsIp(effects)
 
   // Ensure required directories exist
@@ -256,387 +273,417 @@ export const main = sdk.setupMain(async ({ effects }) => {
     }
   }
 
-  return (
-    sdk.Daemons.of(effects)
-      .addOneshot('install-root-ca', {
-        subcontainer: openclawSub,
-        exec: {
-          fn: async (subcontainer) => {
-            await installRootCA(effects, subcontainer)
-            return null
-          },
+  const daemons = sdk.Daemons.of(effects)
+    .addOneshot('install-root-ca', {
+      subcontainer: openclawSub,
+      exec: {
+        fn: async (subcontainer) => {
+          await installRootCA(effects, subcontainer)
+          return null
         },
-        requires: [],
-      })
-      .addOneshot('chown', {
-        subcontainer: openclawSub,
-        exec: {
-          command: ['chown', '-R', 'node:node', '/data'],
-          user: 'root',
-        },
-        requires: [],
-      })
-      // Host mappings (/etc/hosts) and custom CA certs. Independent of
-      // Vaultwarden: any internal service may need them. .local names never
-      // resolve on StartOS (startd treats them as mDNS), hence /etc/hosts.
-      .addOneshot('network-setup', {
-        subcontainer: openclawSub,
-        exec: {
-          fn: async (subcontainer) => {
-            try {
-              const rootfs = await subcontainer.rootfs
-              const hostsPath = `${rootfs}/etc/hosts`
-              const existing = await readFile(hostsPath, 'utf-8').catch(
-                () => '127.0.0.1\tlocalhost\n',
-              )
-              const mappings = ext?.hostMappings ?? []
-              await subcontainer.writeFile(
-                '/etc/hosts',
-                applyHostsBlock(existing, mappings),
-              )
-              console.info(`Wrote ${mappings.length} custom host mapping(s)`)
-            } catch (e) {
-              console.error('Failed to write /etc/hosts mappings:', e)
-            }
+      },
+      requires: [],
+    })
+    .addOneshot('chown', {
+      subcontainer: openclawSub,
+      exec: {
+        command: ['chown', '-R', 'node:node', '/data'],
+        user: 'root',
+      },
+      requires: [],
+    })
+    // Host mappings (/etc/hosts) and custom CA certs. Independent of
+    // Vaultwarden: any internal service may need them. .local names never
+    // resolve on StartOS (startd treats them as mDNS), hence /etc/hosts.
+    .addOneshot('network-setup', {
+      subcontainer: openclawSub,
+      exec: {
+        fn: async (subcontainer) => {
+          try {
+            const rootfs = await subcontainer.rootfs
+            const hostsPath = `${rootfs}/etc/hosts`
+            const existing = await readFile(hostsPath, 'utf-8').catch(
+              () => '127.0.0.1\tlocalhost\n',
+            )
+            const mappings = ext?.hostMappings ?? []
+            await subcontainer.writeFile(
+              '/etc/hosts',
+              applyHostsBlock(existing, mappings),
+            )
+            console.info(`Wrote ${mappings.length} custom host mapping(s)`)
+          } catch (e) {
+            console.error('Failed to write /etc/hosts mappings:', e)
+          }
 
-            try {
-              const certs = splitPemCerts(ext?.caCert)
-              await subcontainer.exec(
-                ['sh', '-c', `rm -f ${CUSTOM_CA_DIR}/${CUSTOM_CA_PREFIX}*.crt`],
-                { user: 'root' },
+          try {
+            const certs = splitPemCerts(ext?.caCert)
+            await subcontainer.exec(
+              ['sh', '-c', `rm -f ${CUSTOM_CA_DIR}/${CUSTOM_CA_PREFIX}*.crt`],
+              { user: 'root' },
+            )
+            for (const [n, pem] of certs.entries()) {
+              await subcontainer.writeFile(
+                `${CUSTOM_CA_DIR}/${CUSTOM_CA_PREFIX}${n}.crt`,
+                pem + '\n',
+                { mode: 0o644 },
               )
-              for (const [n, pem] of certs.entries()) {
-                await subcontainer.writeFile(
-                  `${CUSTOM_CA_DIR}/${CUSTOM_CA_PREFIX}${n}.crt`,
-                  pem + '\n',
-                  { mode: 0o644 },
-                )
-              }
-              const res = await subcontainer.exec(['update-ca-certificates'], {
-                user: 'root',
-              })
-              if (res.exitCode !== 0) {
-                console.error(
-                  'update-ca-certificates failed:',
-                  String(res.stderr),
-                )
-              } else {
-                console.info(`Installed ${certs.length} custom CA cert(s)`)
-              }
-            } catch (e) {
-              console.error('Failed to install custom CA certificates:', e)
             }
-            return null
-          },
+            const res = await subcontainer.exec(['update-ca-certificates'], {
+              user: 'root',
+            })
+            if (res.exitCode !== 0) {
+              console.error(
+                'update-ca-certificates failed:',
+                String(res.stderr),
+              )
+            } else {
+              console.info(`Installed ${certs.length} custom CA cert(s)`)
+            }
+          } catch (e) {
+            console.error('Failed to install custom CA certificates:', e)
+          }
+          return null
         },
-        requires: ['install-root-ca'],
-      })
-      // Configure rbw and unlock the vault (proven manual sequence):
-      // master password in rbw/.credentials, answered by a file-based
-      // pinentry, so login/unlock are non-interactive. Because pinentry is
-      // non-interactive, a later `rbw get` from a skill also re-unlocks on
-      // its own if the agent died or the lock timeout passed. Never fatal.
-      .addOneshot('setup-vault', {
-        subcontainer: openclawSub,
-        exec: {
-          fn: async (subcontainer) => {
-            if (!vw?.enabled || !vw.url || !vw.email) {
-              console.info(
-                'Vaultwarden not enabled/configured — skipping vault setup',
+      },
+      requires: ['install-root-ca'],
+    })
+    // Configure rbw and unlock the vault (proven manual sequence):
+    // master password in rbw/.credentials, answered by a file-based
+    // pinentry, so login/unlock are non-interactive. Because pinentry is
+    // non-interactive, a later `rbw get` from a skill also re-unlocks on
+    // its own if the agent died or the lock timeout passed. Never fatal.
+    .addOneshot('setup-vault', {
+      subcontainer: openclawSub,
+      exec: {
+        fn: async (subcontainer) => {
+          if (!vw?.enabled || !vw.url || !vw.email) {
+            console.info(
+              'Vaultwarden not enabled/configured — skipping vault setup',
+            )
+            return null
+          }
+          try {
+            let haveCreds = await access(credentialsVolumePath)
+              .then(() => true)
+              .catch(() => false)
+            // One-time seed from the legacy settings field (<= :1).
+            if (!haveCreds && vw.masterPassword) {
+              await writeMasterPassword(vw.masterPassword)
+              haveCreds = true
+              console.info('Seeded rbw/.credentials from legacy settings')
+            }
+            if (!haveCreds) {
+              console.error(
+                'Vaultwarden enabled but no master password saved — enter it in Configure External Services. Skipping vault setup.',
               )
               return null
             }
-            try {
-              let haveCreds = await access(credentialsVolumePath)
-                .then(() => true)
-                .catch(() => false)
-              // One-time seed from the legacy settings field (<= :1).
-              if (!haveCreds && vw.masterPassword) {
-                await writeMasterPassword(vw.masterPassword)
-                haveCreds = true
-                console.info('Seeded rbw/.credentials from legacy settings')
-              }
-              if (!haveCreds) {
-                console.error(
-                  'Vaultwarden enabled but no master password saved — enter it in Configure External Services. Skipping vault setup.',
-                )
-                return null
-              }
 
-              await subcontainer.writeFile(RBW_PINENTRY, PINENTRY_SCRIPT, {
-                mode: 0o755,
-              })
-              await subcontainer.writeFile(
-                RBW_CONFIG,
-                JSON.stringify({
-                  email: vw.email,
-                  base_url: vw.url.replace(/\/+$/, ''),
-                  lock_timeout: 3600,
-                  pinentry: RBW_PINENTRY,
-                }),
-                { mode: 0o644 },
-              )
-              await subcontainer.exec(
-                [
-                  'sh',
-                  '-c',
-                  `chown -R node:node ${RBW_DIR} && chmod 600 ${RBW_CREDENTIALS} && chmod 755 ${RBW_PINENTRY}`,
-                ],
-                { user: 'root' },
-              )
+            await subcontainer.writeFile(RBW_PINENTRY, PINENTRY_SCRIPT, {
+              mode: 0o755,
+            })
+            await subcontainer.writeFile(
+              RBW_CONFIG,
+              JSON.stringify({
+                email: vw.email,
+                base_url: vw.url.replace(/\/+$/, ''),
+                lock_timeout: 3600,
+                pinentry: RBW_PINENTRY,
+              }),
+              { mode: 0o644 },
+            )
+            await subcontainer.exec(
+              [
+                'sh',
+                '-c',
+                `chown -R node:node ${RBW_DIR} && chmod 600 ${RBW_CREDENTIALS} && chmod 755 ${RBW_PINENTRY}`,
+              ],
+              { user: 'root' },
+            )
 
-              // rbw spawns (and daemonizes) rbw-agent itself. stop-agent
-              // clears any stale agent holding an old config.
-              const script = [
-                'rbw stop-agent >/dev/null 2>&1 || true',
-                'sleep 1',
-                'timeout 90 rbw login || echo "rbw login: exit $?" >&2',
-                'timeout 90 rbw unlock || echo "rbw unlock: exit $?" >&2',
-                'timeout 120 rbw sync || echo "rbw sync: exit $?" >&2',
-                'rbw unlocked',
-              ].join('\n')
-              const res = await subcontainer.exec(['sh', '-c', script], {
-                user: 'node',
-                env: RBW_ENV,
-              })
-              if (res.exitCode === 0) {
-                console.info('Vault unlocked successfully')
-              } else {
-                console.error(
-                  `Vault setup did not unlock (exit ${res.exitCode}): ${String(res.stderr).trim()}`,
-                )
-              }
-            } catch (e) {
-              console.error('Vault setup failed (non-fatal):', e)
+            // rbw spawns (and daemonizes) rbw-agent itself. stop-agent
+            // clears any stale agent holding an old config.
+            const script = [
+              'rbw stop-agent >/dev/null 2>&1 || true',
+              'sleep 1',
+              'timeout 90 rbw login || echo "rbw login: exit $?" >&2',
+              'timeout 90 rbw unlock || echo "rbw unlock: exit $?" >&2',
+              'timeout 120 rbw sync || echo "rbw sync: exit $?" >&2',
+              'rbw unlocked',
+            ].join('\n')
+            const res = await subcontainer.exec(['sh', '-c', script], {
+              user: 'node',
+              env: RBW_ENV,
+            })
+            if (res.exitCode === 0) {
+              console.info('Vault unlocked successfully')
+            } else {
+              console.error(
+                `Vault setup did not unlock (exit ${res.exitCode}): ${String(res.stderr).trim()}`,
+              )
             }
-            return null
-          },
+          } catch (e) {
+            console.error('Vault setup failed (non-fatal):', e)
+          }
+          return null
         },
-        requires: ['install-root-ca', 'chown', 'network-setup'],
-      })
-      .addDaemon('qdrant', {
-        subcontainer: qdrantSub,
-        exec: {
-          command: ['./qdrant'],
-          user: 'root',
-          env: {
-            QDRANT__STORAGE__STORAGE_PATH: '/qdrant/storage',
-            QDRANT__SERVICE__HTTP_PORT: qdrantPort.toString(),
-            QDRANT__LOG_LEVEL: 'INFO',
-          },
+      },
+      requires: ['install-root-ca', 'chown', 'network-setup'],
+    })
+    .addDaemon('qdrant', {
+      subcontainer: qdrantSub,
+      exec: {
+        command: ['./qdrant'],
+        user: 'root',
+        env: {
+          QDRANT__STORAGE__STORAGE_PATH: '/qdrant/storage',
+          QDRANT__SERVICE__HTTP_PORT: qdrantPort.toString(),
+          QDRANT__LOG_LEVEL: 'INFO',
         },
-        ready: {
-          display: i18n('Qdrant Vector Database'),
-          fn: qdrantReady,
-          gracePeriod: 30_000,
-        },
-        requires: [],
-      })
-      .addDaemon('primary', {
-        subcontainer: openclawSub,
-        exec: {
-          command: [
-            'openclaw',
-            'gateway',
-            '--port',
-            uiPort.toString(),
-            '--bind',
-            'lan',
-            '--verbose',
-            '--allow-unconfigured',
-          ],
-          user: 'node',
-          env: {
-            HOME: '/data',
-            OPENCLAW_STATE_DIR: '/data/.openclaw',
-            NODE_EXTRA_CA_CERTS: '/etc/ssl/certs/ca-certificates.crt',
-            QDRANT_URL: qdrantUrl,
-            // rbw XDG paths so skills can call rbw with the unlocked agent
-            XDG_CONFIG_HOME: '/data/.openclaw/rbw/config',
-            XDG_CACHE_HOME: '/data/.openclaw/rbw/cache',
-            XDG_RUNTIME_DIR: '/data/.openclaw/rbw/runtime',
-            ...providerKeyEnv,
-            ...externalEnv,
-          },
-        },
-        ready: {
-          display: i18n('Web Interface'),
-          fn: () =>
-            bridge.url
-              ? sdk.healthCheck.checkWebUrl(effects, `${bridge.url}/healthz`, {
-                  successMessage: i18n('OpenClaw Gateway is ready'),
-                  errorMessage: i18n('OpenClaw Gateway is not ready'),
-                })
-              : Promise.resolve({
-                  result: 'starting' as const,
-                  message: i18n('OpenClaw Gateway is not ready'),
-                }),
-          gracePeriod: 40_000,
-        },
-        requires: [
-          'install-root-ca',
-          'chown',
-          'network-setup',
-          'setup-vault',
-          'qdrant',
+      },
+      ready: {
+        display: i18n('Qdrant Vector Database'),
+        fn: qdrantReady,
+        gracePeriod: 30_000,
+      },
+      requires: [],
+    })
+    .addDaemon('primary', {
+      subcontainer: openclawSub,
+      exec: {
+        command: [
+          'openclaw',
+          'gateway',
+          '--port',
+          uiPort.toString(),
+          '--bind',
+          'lan',
+          '--verbose',
+          '--allow-unconfigured',
         ],
-      })
-      .addOneshot('check-login', {
-        subcontainer: openclawSub,
-        exec: {
-          fn: async (subcontainer) => {
-            const result = await subcontainer.exec(
-              ['start-cli', 'auth', 'session', 'list'],
-              { user: 'node', env: { HOME: '/data' } },
-            )
-            if (result.exitCode !== 0) {
-              await sdk.action.createOwnTask(effects, loginToOs, 'important', {
-                reason: i18n(
-                  'Login to StartOS to enable start-cli authentication for managing the server',
-                ),
+        user: 'node',
+        env: {
+          HOME: '/data',
+          OPENCLAW_STATE_DIR: '/data/.openclaw',
+          NODE_EXTRA_CA_CERTS: '/etc/ssl/certs/ca-certificates.crt',
+          QDRANT_URL: qdrantUrl,
+          // rbw XDG paths so skills can call rbw with the unlocked agent
+          XDG_CONFIG_HOME: '/data/.openclaw/rbw/config',
+          XDG_CACHE_HOME: '/data/.openclaw/rbw/cache',
+          XDG_RUNTIME_DIR: '/data/.openclaw/rbw/runtime',
+          ...providerKeyEnv,
+          ...externalEnv,
+        },
+      },
+      ready: {
+        display: i18n('Web Interface'),
+        fn: () =>
+          bridge.url
+            ? sdk.healthCheck.checkWebUrl(effects, `${bridge.url}/healthz`, {
+                successMessage: i18n('OpenClaw Gateway is ready'),
+                errorMessage: i18n('OpenClaw Gateway is not ready'),
               })
-            }
-            return null
-          },
+            : Promise.resolve({
+                result: 'starting' as const,
+                message: i18n('OpenClaw Gateway is not ready'),
+              }),
+        gracePeriod: 40_000,
+      },
+      requires: [
+        'install-root-ca',
+        'chown',
+        'network-setup',
+        'setup-vault',
+        'qdrant',
+      ],
+    })
+    .addOneshot('check-login', {
+      subcontainer: openclawSub,
+      exec: {
+        fn: async (subcontainer) => {
+          const result = await subcontainer.exec(
+            ['start-cli', 'auth', 'session', 'list'],
+            { user: 'node', env: { HOME: '/data' } },
+          )
+          if (result.exitCode !== 0) {
+            await sdk.action.createOwnTask(effects, loginToOs, 'important', {
+              reason: i18n(
+                'Login to StartOS to enable start-cli authentication for managing the server',
+              ),
+            })
+          }
+          return null
         },
-        requires: ['primary'],
-      })
-      .addOneshot('check-simplex-plugin', {
-        subcontainer: openclawSub,
-        exec: {
-          fn: (subcontainer) =>
-            requestSimplexPluginUpgrade(effects, subcontainer),
-        },
-        requires: ['primary'],
-      })
-      .addOneshot('server-state-snapshot', {
-        subcontainer: openclawSub,
-        exec: {
-          fn: async (subcontainer) => {
-            const execOpts = { user: 'node' as const, env: { HOME: '/data' } }
-            const commands: [string, string[]][] = [
-              ['Server Metrics', ['start-cli', 'server', 'metrics']],
-              ['Server Time', ['start-cli', 'server', 'time']],
-              ['Package List', ['start-cli', 'package', 'list']],
-              ['Package Stats', ['start-cli', 'package', 'stats']],
-              ['Notifications', ['start-cli', 'notification', 'list']],
-              ['Network Gateways', ['start-cli', 'net', 'gateway', 'list']],
-              ['Disk List', ['start-cli', 'disk', 'list']],
-              ['Backup Targets', ['start-cli', 'backup', 'target', 'list']],
-            ]
+      },
+      requires: ['primary'],
+    })
+    .addOneshot('check-simplex-plugin', {
+      subcontainer: openclawSub,
+      exec: {
+        fn: (subcontainer) =>
+          requestSimplexPluginUpgrade(effects, subcontainer),
+      },
+      requires: ['primary'],
+    })
+    .addOneshot('server-state-snapshot', {
+      subcontainer: openclawSub,
+      exec: {
+        fn: async (subcontainer) => {
+          const execOpts = { user: 'node' as const, env: { HOME: '/data' } }
+          const commands: [string, string[]][] = [
+            ['Server Metrics', ['start-cli', 'server', 'metrics']],
+            ['Server Time', ['start-cli', 'server', 'time']],
+            ['Package List', ['start-cli', 'package', 'list']],
+            ['Package Stats', ['start-cli', 'package', 'stats']],
+            ['Notifications', ['start-cli', 'notification', 'list']],
+            ['Network Gateways', ['start-cli', 'net', 'gateway', 'list']],
+            ['Disk List', ['start-cli', 'disk', 'list']],
+            ['Backup Targets', ['start-cli', 'backup', 'target', 'list']],
+          ]
 
-            const sections: string[] = []
-            for (const [label, cmd] of commands) {
-              const result = await subcontainer.exec(cmd, execOpts)
-              const output =
-                result.exitCode === 0
-                  ? String(result.stdout).trim() || '_No output_'
-                  : `_Command failed (exit ${result.exitCode}): ${String(result.stderr).trim()}_`
-              sections.push(`### ${label}\n\n\`\`\`\n${output}\n\`\`\``)
-            }
+          const sections: string[] = []
+          for (const [label, cmd] of commands) {
+            const result = await subcontainer.exec(cmd, execOpts)
+            const output =
+              result.exitCode === 0
+                ? String(result.stdout).trim() || '_No output_'
+                : `_Command failed (exit ${result.exitCode}): ${String(result.stderr).trim()}_`
+            sections.push(`### ${label}\n\n\`\`\`\n${output}\n\`\`\``)
+          }
 
-            const stateBlock =
-              '## Server State Snapshot\n\n' +
-              `_Captured at startup: ${new Date().toISOString()}_\n\n` +
-              sections.join('\n\n') +
-              '\n'
+          const stateBlock =
+            '## Server State Snapshot\n\n' +
+            `_Captured at startup: ${new Date().toISOString()}_\n\n` +
+            sections.join('\n\n') +
+            '\n'
 
-            const memoryPath = sdk.volumes.main.subpath(
-              '.openclaw/workspace/MEMORY.md',
-            )
-            const existing = await readFile(memoryPath, 'utf-8').catch(() => '')
-            const marker = '## Server State Snapshot'
-            const idx = existing.indexOf(marker)
-            const before =
-              idx >= 0 ? existing.slice(0, idx).trimEnd() : existing.trimEnd()
-            const updated = before ? before + '\n\n' + stateBlock : stateBlock
-            await writeFile(memoryPath, updated)
+          const memoryPath = sdk.volumes.main.subpath(
+            '.openclaw/workspace/MEMORY.md',
+          )
+          const existing = await readFile(memoryPath, 'utf-8').catch(() => '')
+          const marker = '## Server State Snapshot'
+          const idx = existing.indexOf(marker)
+          const before =
+            idx >= 0 ? existing.slice(0, idx).trimEnd() : existing.trimEnd()
+          const updated = before ? before + '\n\n' + stateBlock : stateBlock
+          await writeFile(memoryPath, updated)
 
-            return null
-          },
+          return null
         },
-        requires: ['primary', 'check-login'],
-      })
-      .addHealthCheck('vault', {
-        ready: {
-          display: vaultCheck.display,
-          fn: () => vaultCheck.fn(openclawSub),
-          trigger: vaultTrigger,
-          gracePeriod: 0,
-        },
-        requires: ['setup-vault'],
-      })
-      .addHealthCheck('ext-vaultwarden', {
-        ready: {
-          display: extChecks.vaultwarden.display,
-          fn: () => extChecks.vaultwarden.fn(openclawSub),
-          trigger: externalTrigger,
-          gracePeriod: 0,
-        },
-        requires: ['network-setup'],
-      })
-      .addHealthCheck('ext-ollama', {
-        ready: {
-          display: extChecks.ollama.display,
-          fn: () => extChecks.ollama.fn(openclawSub),
-          trigger: externalTrigger,
-          gracePeriod: 0,
-        },
-        requires: ['network-setup'],
-      })
-      .addHealthCheck('ext-nas', {
-        ready: {
-          display: extChecks.nas.display,
-          fn: () => extChecks.nas.fn(openclawSub),
-          trigger: externalTrigger,
-          gracePeriod: 0,
-        },
-        requires: ['network-setup'],
-      })
-      .addHealthCheck('ext-n8n', {
-        ready: {
-          display: extChecks.n8n.display,
-          fn: () => extChecks.n8n.fn(openclawSub),
-          trigger: externalTrigger,
-          gracePeriod: 0,
-        },
-        requires: ['network-setup'],
-      })
-      .addHealthCheck('ext-trilium', {
-        ready: {
-          display: extChecks.trilium.display,
-          fn: () => extChecks.trilium.fn(openclawSub),
-          trigger: externalTrigger,
-          gracePeriod: 0,
-        },
-        requires: ['network-setup'],
-      })
-      .addHealthCheck('ext-stirling', {
-        ready: {
-          display: extChecks.stirling.display,
-          fn: () => extChecks.stirling.fn(openclawSub),
-          trigger: externalTrigger,
-          gracePeriod: 0,
-        },
-        requires: ['network-setup'],
-      })
-      .addHealthCheck('ext-searxng', {
-        ready: {
-          display: extChecks.searxng.display,
-          fn: () => extChecks.searxng.fn(openclawSub),
-          trigger: externalTrigger,
-          gracePeriod: 0,
-        },
-        requires: ['network-setup'],
-      })
-      .addHealthCheck('ext-firecrawl', {
-        ready: {
-          display: extChecks.firecrawl.display,
-          fn: () => extChecks.firecrawl.fn(openclawSub),
-          trigger: externalTrigger,
-          gracePeriod: 0,
-        },
-        requires: ['network-setup'],
-      })
-  )
+      },
+      requires: ['primary', 'check-login'],
+    })
+    .addHealthCheck('vault', {
+      ready: {
+        display: vaultCheck.display,
+        fn: () => vaultCheck.fn(openclawSub),
+        trigger: vaultTrigger,
+        gracePeriod: 0,
+      },
+      requires: ['setup-vault'],
+    })
+    .addHealthCheck('ext-vaultwarden', {
+      ready: {
+        display: extChecks.vaultwarden.display,
+        fn: () => extChecks.vaultwarden.fn(openclawSub),
+        trigger: externalTrigger,
+        gracePeriod: 0,
+      },
+      requires: ['network-setup'],
+    })
+    .addHealthCheck('ext-ollama', {
+      ready: {
+        display: extChecks.ollama.display,
+        fn: () => extChecks.ollama.fn(openclawSub),
+        trigger: externalTrigger,
+        gracePeriod: 0,
+      },
+      requires: ['network-setup'],
+    })
+    .addHealthCheck('ext-nas', {
+      ready: {
+        display: extChecks.nas.display,
+        fn: () => extChecks.nas.fn(openclawSub),
+        trigger: externalTrigger,
+        gracePeriod: 0,
+      },
+      requires: ['network-setup'],
+    })
+    .addHealthCheck('ext-n8n', {
+      ready: {
+        display: extChecks.n8n.display,
+        fn: () => extChecks.n8n.fn(openclawSub),
+        trigger: externalTrigger,
+        gracePeriod: 0,
+      },
+      requires: ['network-setup'],
+    })
+    .addHealthCheck('ext-trilium', {
+      ready: {
+        display: extChecks.trilium.display,
+        fn: () => extChecks.trilium.fn(openclawSub),
+        trigger: externalTrigger,
+        gracePeriod: 0,
+      },
+      requires: ['network-setup'],
+    })
+    .addHealthCheck('ext-stirling', {
+      ready: {
+        display: extChecks.stirling.display,
+        fn: () => extChecks.stirling.fn(openclawSub),
+        trigger: externalTrigger,
+        gracePeriod: 0,
+      },
+      requires: ['network-setup'],
+    })
+    .addHealthCheck('ext-searxng', {
+      ready: {
+        display: extChecks.searxng.display,
+        fn: () => extChecks.searxng.fn(openclawSub),
+        trigger: externalTrigger,
+        gracePeriod: 0,
+      },
+      requires: ['network-setup'],
+    })
+    .addHealthCheck('ext-firecrawl', {
+      ready: {
+        display: extChecks.firecrawl.display,
+        fn: () => extChecks.firecrawl.fn(openclawSub),
+        trigger: externalTrigger,
+        gracePeriod: 0,
+      },
+      requires: ['network-setup'],
+    })
+
+  if (!webchatEnabled) return daemons
+
+  return daemons.addDaemon('webchat', {
+    subcontainer: openclawSub,
+    exec: {
+      command: ['node', '/opt/webchat/server.mjs'],
+      user: 'node',
+      env: {
+        HOME: '/data',
+        NODE_ENV: 'production',
+        NODE_EXTRA_CA_CERTS: '/etc/ssl/certs/ca-certificates.crt',
+        WEBCHAT_PORT: String(webchatPort),
+        WEBCHAT_UPLOAD_PORT: String(webchatUploadPort),
+        GW_URL: `ws://127.0.0.1:${uiPort}`,
+      },
+    },
+    ready: {
+      display: 'Webchat',
+      // /healthz answers 503 while the webchat is up but not yet connected
+      // to the gateway, so this goes green only when chatting works.
+      fn: () =>
+        probeHttp(
+          openclawSub,
+          'Webchat',
+          `http://127.0.0.1:${webchatPort}/healthz`,
+          { okBelow: 300 },
+        ),
+      gracePeriod: 30_000,
+    },
+    requires: ['primary'],
+  })
 })

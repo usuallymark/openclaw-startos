@@ -43,13 +43,16 @@ function firstLine(s: unknown): string {
 
 /**
  * HTTP reachability from inside the container. Any HTTP response below 500
- * counts as reachable (401/403 just mean "up, wants credentials").
+ * counts as reachable (401/403 just mean "up, wants credentials"); `okBelow`
+ * tightens that (e.g. 300 for our own /healthz endpoints).
  */
 export async function probeHttp(
   sub: Sub,
   label: string,
   url: string,
+  opts: { okBelow?: number } = {},
 ): Promise<Result> {
+  const okBelow = opts.okBelow ?? 500
   try {
     const res = await sub.exec(
       [
@@ -67,7 +70,7 @@ export async function probeHttp(
       15_000,
     )
     const code = parseInt(String(res.stdout).trim(), 10)
-    if (res.exitCode === 0 && code > 0 && code < 500) {
+    if (res.exitCode === 0 && code > 0 && code < okBelow) {
       return { result: 'success', message: `${label} reachable` }
     }
     if (res.exitCode === 0) {
