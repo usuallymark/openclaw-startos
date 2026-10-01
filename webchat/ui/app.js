@@ -144,11 +144,8 @@
       name.textContent = c.name
       name.title = c.name
       item.append(name)
-      if (!c.fixed) {
-        const ren = iconBtn('✎', 'Rename', () => startRename(c, name))
-        item.append(ren)
-      }
-      item.append(iconBtn(c.fixed ? '⟲' : '×', c.fixed ? 'Clear history' : 'Delete', () => removeConv(c)))
+      if (!c.general) item.append(iconBtn('✎', 'Rename', () => startRename(c, name)))
+      item.append(iconBtn(c.fixed ? '⟲' : '×', c.fixed ? 'Clear' : 'Delete', () => removeConv(c)))
       item.addEventListener('click', () => switchConv(c.key))
       els.list.append(item)
     }
@@ -225,7 +222,7 @@
 
   async function removeConv(c) {
     const ok = await dialog({
-      title: c.fixed ? 'Clear the General conversation?' : `Delete “${c.name}”?`,
+      title: c.fixed ? `Clear “${c.name}”? It starts over empty.` : `Delete “${c.name}”?`,
       okText: c.fixed ? 'Clear' : 'Delete',
     })
     if (!ok) return

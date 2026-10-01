@@ -151,9 +151,10 @@ own picture, place `avatars/<id>.png` (or `.jpg`/`.webp`) in
 **Files:** while the webchat is on, the agent can send files as download
 buttons (links expire after 24 hours).
 
-Deleting a conversation in the webchat archives it in OpenClaw rather than
-erasing it; "clear" on General starts a fresh General conversation the same
-way.
+Deleting a conversation (×) archives it in OpenClaw rather than erasing it.
+General and preset conversations can't be deleted, only cleared (⟲): the old
+conversation is archived and an empty one takes its place. To remove a preset,
+delete its line in Configure Webchat.
 
 ---
 

@@ -228,9 +228,10 @@ inside the openclaw subcontainer against the live gateway. **PASS.**
 - **No admin scope:** `sessions.delete` and `sessions.reset` require
   `operator.admin`; the webchat keeps `operator.read`/`operator.write`.
   Deleting a conversation **archives** it (`sessions.patch` with
-  `archived: true` + `expectedSessionId`). Clearing General archives the
-  current General session and moves General to a fresh key
-  (`agent:main:wc-<id>:general-<ts>`), recorded in the profile state file.
+  `archived: true` + `expectedSessionId`). General and presets are "fixed":
+  they can only be cleared, which archives the current session and points
+  the fixed base key at a fresh one (`…:general-<ts>`, `…-preset-<ts>`),
+  recorded as `remap` in the profile state file (since :5).
 - **Names:** stored in the profile state file and mirrored to the gateway
   label (`sessions.patch` `label`) so they also show in the Control UI.
 - **Lockout:** per address (5 tries, then 5 min doubling) and per profile

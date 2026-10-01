@@ -100,10 +100,16 @@ function ownsKey(p, key) {
 const slugify = (s) =>
   String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 60) || 'chat'
 const presetKey = (p, title) => `${defaultKey(p)}:${slugify(title)}-preset`
-// "General" starts at the profile's base key. Clearing it archives that
-// session and moves General to a fresh key (the webchat runs with
-// operator.read/write only; reset/delete would need operator.admin).
-const generalKey = (p, st) => (st.general && ownsKey(p, st.general) ? st.general : defaultKey(p))
+// "Fixed" conversations (General and each configured preset) have a stable
+// base key. Clearing one archives its current session and points the base at
+// a fresh key (the webchat runs with operator.read/write only; reset/delete
+// would need operator.admin). st.remap: base key -> current key.
+const currentKey = (p, st, base) => {
+  const k = st.remap[base]
+  return k && ownsKey(p, k) ? k : base
+}
+const fixedBases = (p) => [defaultKey(p), ...p.presets.map((t) => presetKey(p, t))]
+const baseOf = (p, st, key) => fixedBases(p).find((b) => currentKey(p, st, b) === key) ?? null
 
 // ── Secrets: cookie key ─────────────────────────────────────────────────────
 function loadSecret() {
@@ -125,9 +131,12 @@ function stateFile(id) {
 function readState(id) {
   try {
     const s = JSON.parse(fs.readFileSync(stateFile(id), 'utf8'))
-    return { names: s.names || {}, deleted: s.deleted || [], created: s.created || [], general: s.general || null }
+    const remap = s.remap || {}
+    // 2026.9.4:4 kept only General's moved key, as `general`.
+    if (s.general && !remap[`agent:${AGENT}:wc-${id}`]) remap[`agent:${AGENT}:wc-${id}`] = s.general
+    return { names: s.names || {}, deleted: s.deleted || [], created: s.created || [], remap }
   } catch {
-    return { names: {}, deleted: [], created: [], general: null }
+    return { names: {}, deleted: [], created: [], remap: {} }
   }
 }
 function writeState(id, s) {
@@ -331,13 +340,14 @@ async function listConversations(p) {
   const st = readState(p.id)
   const deleted = new Set(st.deleted)
   const def = defaultKey(p)
-  const gen = generalKey(p, st)
+  const gen = currentKey(p, st, def)
   const out = new Map()
-  out.set(gen, { key: gen, name: st.names[gen] || 'General', fixed: true })
+  out.set(gen, { key: gen, name: st.names[def] || 'General', fixed: true, general: true })
   for (const title of p.presets) {
-    const k = presetKey(p, title)
-    if (deleted.has(k) || out.has(k)) continue
-    out.set(k, { key: k, name: st.names[k] || title, preset: true })
+    const base = presetKey(p, title)
+    const k = currentKey(p, st, base)
+    if (deleted.has(base) || out.has(k)) continue
+    out.set(k, { key: k, name: st.names[base] || title, fixed: true, preset: true })
   }
   let rows = []
   try {
@@ -349,7 +359,8 @@ async function listConversations(p) {
   const extra = []
   for (const r of rows) {
     const k = r?.key
-    if (!ownsKey(p, k) || out.has(k) || deleted.has(k) || r.archived || k === def || /:general-\d+$/.test(k)) continue
+    // Skip fixed conversations' own (current or retired) keys.
+    if (!ownsKey(p, k) || out.has(k) || deleted.has(k) || r.archived || k === def || /:general-\d+$/.test(k) || /-preset(-\d+)?$/.test(k)) continue
     extra.push({
       key: k,
       name: st.names[k] || r.label || r.displayName || slugToName(k.slice(def.length + 1)),
@@ -409,7 +420,7 @@ const handlers = {
     const title = String(name || '').trim().slice(0, 80)
     if (!title) throw new Error('name required')
     const st = readState(p.id)
-    st.names[key] = title
+    st.names[baseOf(p, st, key) ?? key] = title
     writeState(p.id, st)
     gwRequest('sessions.patch', { key, label: title }).catch(() => {})
     return { ok: true }
@@ -417,10 +428,12 @@ const handlers = {
   async 'convs.delete'(p, { key }) {
     if (!ownsKey(p, key)) throw new Error('forbidden')
     const st = readState(p.id)
-    if (key === generalKey(p, st)) {
-      await archiveSession(key)
-      const next = `${defaultKey(p)}:general-${Date.now()}`
-      st.general = next
+    const base = baseOf(p, st, key)
+    if (base) {
+      // General or a preset: clear (archive + fresh key), never remove.
+      await archiveSession(key).catch((e) => log('archive failed:', e?.message))
+      const next = base === defaultKey(p) ? `${base}:general-${Date.now()}` : `${base}-${Date.now()}`
+      st.remap[base] = next
       writeState(p.id, st)
       return { ok: true, cleared: true, key: next }
     }
@@ -696,7 +709,7 @@ const server = http.createServer(async (req, res) => {
           `<a class="pick" href="/u/${esc(p.id)}/" style="--accent:${ACCENTS[p.accent][0]}"><img src="/u/${esc(p.id)}/avatar" alt=""><span>${esc(p.name)}</span></a>`,
       )
       .join('')
-    return send(res, 200, PICKER_HTML.replace('{{APP_NAME}}', esc(config.appName)).replace('{{ITEMS}}', items), {
+    return send(res, 200, PICKER_HTML.replaceAll('{{APP_NAME}}', esc(config.appName)).replaceAll('{{ITEMS}}', items), {
       'Content-Type': 'text/html; charset=utf-8',
       'Cache-Control': 'no-store',
     })

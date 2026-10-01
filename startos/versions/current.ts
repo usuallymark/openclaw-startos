@@ -1,15 +1,12 @@
 import { IMPOSSIBLE, VersionInfo } from '@start9labs/start-sdk'
 
 export const current = VersionInfo.of({
-  version: '2026.9.4:4',
+  version: '2026.9.4:5',
   releaseNotes: {
-    en_US: `Adds an optional, mobile-friendly **Webchat** (off by default).
+    en_US: `Webchat fixes.
 
-- Turn it on with the new **Configure Webchat** action. Add one profile per person, each with its own name, color, optional greeting, preset conversations and optional PIN. Each profile gets its own address and can be added to a phone's home screen as its own app.
-- Each profile only sees its own conversations. The browser never receives the gateway password: the webchat server talks to OpenClaw on the person's behalf.
-- A PIN is asked once per device and remembered (90 days by default). Changing a PIN signs out every device for that profile; repeated wrong PINs are locked out.
-- The agent can hand files to the person as download buttons (new **webchat-present** skill, loaded while the webchat is on).
-- A **Webchat** health check goes green once the webchat is connected to OpenClaw.`,
+- The profile picker now shows the app name instead of "{{APP_NAME}}".
+- Preset conversations can be **cleared** (⟲) like General: the old conversation is archived and an empty one with the same name takes its place. Presets are only removed by deleting their line in Configure Webchat.`,
   },
   migrations: {
     up: async () => {},
