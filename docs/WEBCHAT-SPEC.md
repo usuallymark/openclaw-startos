@@ -242,6 +242,12 @@ inside the openclaw subcontainer against the live gateway. **PASS.**
 - **No bundling in the image:** `/opt/webchat` is installed with
   `npm ci --omit=dev` from the committed lockfile.
 
+- **Topic context (since :6):** the hidden first message is the greeting
+  plus "This conversation is about: <name>" (or `{topic}` filled in); sent
+  once per conversation (state `primed`), before the first user message if
+  needed; gateway session labels are not visible to the model, so this is
+  the only channel.
+
 Testing (local, against a real openclaw 2026.9.4 gateway and a fake
 OpenAI-compatible model): 49 protocol/security checks, 33 browser checks
 (desktop + mobile, Playwright), 13 action save/prefill checks, clean-install

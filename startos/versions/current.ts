@@ -1,12 +1,13 @@
 import { IMPOSSIBLE, VersionInfo } from '@start9labs/start-sdk'
 
 export const current = VersionInfo.of({
-  version: '2026.9.4:5',
+  version: '2026.9.4:6',
   releaseNotes: {
-    en_US: `Webchat fixes.
+    en_US: `Webchat: the agent now knows what each conversation is about.
 
-- The profile picker now shows the app name instead of "{{APP_NAME}}".
-- Preset conversations can be **cleared** (⟲) like General: the old conversation is archived and an empty one with the same name takes its place. Presets are only removed by deleting their line in Configure Webchat.`,
+- When a preset or named conversation starts, its name is passed to the agent with the hidden greeting ("This conversation is about: …"), or wherever you put \`{topic}\` in the greeting prompt. Conversations already under way are unchanged.
+- This happens before the first message even if someone types right away; the message box waits briefly ("getting ready…") until the agent has answered.
+- Fixed replies occasionally showing twice when two replies overlapped.`,
   },
   migrations: {
     up: async () => {},

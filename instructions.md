@@ -148,6 +148,12 @@ of 512×512 or larger looks best as a home-screen icon. To give one profile its
 own picture, place `avatars/<id>.png` (or `.jpg`/`.webp`) in
 `/data/.openclaw/webchat/`.
 
+**Topics:** each conversation tells the agent its topic when it starts:
+the greeting prompt is sent with "This conversation is about: <name>" added
+(or wherever you put `{topic}` in the greeting). This happens before the first
+message even if someone types right away, and only once per conversation.
+General has no topic.
+
 **Files:** while the webchat is on, the agent can send files as download
 buttons (links expire after 24 hours).
 

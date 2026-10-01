@@ -134,9 +134,9 @@ function readState(id) {
     const remap = s.remap || {}
     // 2026.9.4:4 kept only General's moved key, as `general`.
     if (s.general && !remap[`agent:${AGENT}:wc-${id}`]) remap[`agent:${AGENT}:wc-${id}`] = s.general
-    return { names: s.names || {}, deleted: s.deleted || [], created: s.created || [], remap }
+    return { names: s.names || {}, deleted: s.deleted || [], created: s.created || [], remap, primed: s.primed || {} }
   } catch {
-    return { names: {}, deleted: [], created: [], remap: {} }
+    return { names: {}, deleted: [], created: [], remap: {}, primed: {} }
   }
 }
 function writeState(id, s) {
@@ -401,6 +401,52 @@ async function archiveSession(key) {
   return true
 }
 
+// The conversation's topic: a preset's title (or its renamed name) or a named
+// conversation's name. General has none.
+function topicOf(p, st, key) {
+  const base = baseOf(p, st, key)
+  if (base === defaultKey(p)) return null
+  if (base) return st.names[base] || p.presets.find((t) => presetKey(p, t) === base) || null
+  return st.names[key] || null
+}
+
+// Hidden first message of a conversation: the profile's greeting with the
+// topic filled in ({topic}), or with a topic line added. Sent once per
+// conversation; skipped when the conversation already has messages.
+function primeText(p, topic) {
+  const g = (p.greeting || '').trim()
+  if (g.includes('{topic}')) return topic ? g.replaceAll('{topic}', topic) : g.replace(/[^.!?\n]*\{topic\}[^.!?\n]*[.!?]?/g, '').trim() || null
+  const line = topic ? `This conversation is about: ${topic}.` : ''
+  return [g, line].filter(Boolean).join('\n\n') || null
+}
+
+const priming = new Map() // key -> Promise, so concurrent callers share one prime
+function ensurePrimed(p, key) {
+  if (priming.has(key)) return priming.get(key)
+  const job = (async () => {
+    const st = readState(p.id)
+    if (st.primed[key]) return false
+    const markDone = () => {
+      const s2 = readState(p.id)
+      s2.primed[key] = true
+      writeState(p.id, s2)
+    }
+    const topic = topicOf(p, st, key)
+    const text = primeText(p, topic)
+    const h = await gwRequest('chat.history', { sessionKey: key, limit: 1 })
+    if (!text || (h?.messages ?? []).length) {
+      markDone()
+      return false
+    }
+    await gwRequest('chat.send', { sessionKey: key, message: text, idempotencyKey: `prime-${key}`.slice(0, 200) })
+    markDone()
+    if (topic) gwRequest('sessions.patch', { key, label: topic.slice(0, 80) }).catch(() => {})
+    return true
+  })().finally(() => priming.delete(key))
+  priming.set(key, job)
+  return job
+}
+
 // App protocol handlers. Every key is checked against the profile prefix.
 const handlers = {
   async 'convs.list'(p) {
@@ -453,6 +499,9 @@ const handlers = {
     const message = String(text ?? '')
     if (!message.trim()) throw new Error('empty message')
     if (message.length > 100_000) throw new Error('message too long')
+    // The topic/greeting always goes first, even if the person types before
+    // the page sent it.
+    await ensurePrimed(p, key).catch((e) => log('prime failed:', e?.message))
     const res = await gwRequest('chat.send', {
       sessionKey: key,
       message,
@@ -462,11 +511,7 @@ const handlers = {
   },
   async 'chat.prime'(p, { key }) {
     if (!ownsKey(p, key)) throw new Error('forbidden')
-    if (!p.greeting) return { primed: false }
-    const h = await gwRequest('chat.history', { sessionKey: key, limit: 1 })
-    if ((h?.messages ?? []).length) return { primed: false }
-    await gwRequest('chat.send', { sessionKey: key, message: p.greeting, idempotencyKey: `prime-${key}`.slice(0, 200) })
-    return { primed: true }
+    return { primed: await ensurePrimed(p, key) }
   },
   async 'chat.abort'(p, { key }) {
     if (!ownsKey(p, key)) throw new Error('forbidden')

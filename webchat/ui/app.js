@@ -170,7 +170,8 @@
     if (key === current) return
     current = key
     store.set('current', key)
-    stream = null
+    runs.clear()
+    endPriming()
     setBusy(false)
     renderConvs()
     loadHistory()
@@ -258,7 +259,6 @@
   }
 
   // ── Messages ──────────────────────────────────────────────────────────────
-  let stream = null // { key, bubble, text }
   let busy = false
   let historySeq = 0
 
@@ -266,7 +266,7 @@
     const seq = ++historySeq
     const key = current
     els.msgs.textContent = ''
-    stream = null
+    runs.clear()
     if (!connected) return showEmpty()
     let res
     try {
@@ -291,7 +291,10 @@
       if (res.empty && !sentMeanwhile) {
         call('chat.prime', { key })
           .then((r) => {
-            if (r.primed && key === current) showTyping()
+            if (r.primed && key === current) {
+              showTyping()
+              startPriming(key)
+            }
           })
           .catch(() => {})
       }
@@ -356,50 +359,73 @@
     typingEl = null
   }
 
+  // One entry per agent run, so overlapping replies (e.g. the topic greeting
+  // and the person's first message) each keep their own bubble.
+  const runs = new Map() // runId -> { text, bubble }
   let renderQueued = false
   function onChatEvent(m) {
     if (m.key !== current) return
     if (m.state === 'status') {
       setBusy(true)
-      if (!stream) showTyping()
+      if (!runs.has(m.runId)) showTyping()
       return
     }
     if (m.state === 'delta') {
       setBusy(true)
-      if (!stream || stream.runId !== m.runId) {
-        stream = { runId: m.runId, text: '', bubble: addMsg('assistant', '') }
-      }
-      stream.text = m.replace ? m.deltaText : stream.text + m.deltaText
+      let r = runs.get(m.runId)
+      if (!r) runs.set(m.runId, (r = { text: '', bubble: addMsg('assistant', '') }))
+      r.text = m.replace ? m.deltaText : r.text + m.deltaText
       if (!renderQueued) {
         renderQueued = true
         requestAnimationFrame(() => {
           renderQueued = false
-          if (stream) {
-            render(stream.bubble, 'assistant', stream.text)
-            scrollDown()
-          }
+          for (const x of runs.values()) render(x.bubble, 'assistant', x.text)
+          scrollDown()
         })
       }
       return
     }
     // terminal states
-    removeTyping()
+    const r = runs.get(m.runId)
+    runs.delete(m.runId)
     if (m.state === 'final' || m.state === 'aborted') {
-      const text = m.text || stream?.text || ''
-      if (stream && stream.runId === m.runId) render(stream.bubble, 'assistant', text)
+      const text = m.text || r?.text || ''
+      if (r) render(r.bubble, 'assistant', text)
       else if (text) addMsg('assistant', text)
       if (m.state === 'aborted') addMsg('assistant', 'Stopped.', null, 'error')
     } else if (m.state === 'error') {
+      if (r && !r.text) r.bubble.parentElement?.remove()
       addMsg('assistant', m.errorMessage || 'Something went wrong.', null, 'error')
     }
-    stream = null
-    setBusy(false)
+    if (primingKey === m.key) endPriming()
+    if (!runs.size) {
+      removeTyping()
+      setBusy(false)
+    }
     scrollDown()
+  }
+
+  // While the hidden topic greeting is being answered, hold the composer so
+  // the person's first message lands after Alfred's greeting.
+  let primingKey = null
+  let primingTimer = null
+  function startPriming(key) {
+    primingKey = key
+    clearTimeout(primingTimer)
+    primingTimer = setTimeout(endPriming, 45000)
+    els.input.placeholder = `${B.appName} is getting ready…`
+    updateSend()
+  }
+  function endPriming() {
+    primingKey = null
+    clearTimeout(primingTimer)
+    els.input.placeholder = `Message ${B.appName}…`
+    updateSend()
   }
 
   async function sendMessage() {
     const text = els.input.value
-    if (!text.trim() || !connected) return
+    if (!text.trim() || !connected || primingKey === current) return
     els.input.value = ''
     autosize()
     addMsg('user', text, Date.now())
@@ -421,7 +447,7 @@
     updateSend()
   }
   function updateSend() {
-    els.send.disabled = !connected || !els.input.value.trim()
+    els.send.disabled = !connected || !els.input.value.trim() || primingKey === current
   }
 
   function scrollDown(force) {

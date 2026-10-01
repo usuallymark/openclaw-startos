@@ -50,7 +50,7 @@ const profileSpec = InputSpec.of({
   greeting: Value.textarea({
     name: 'Greeting prompt',
     description:
-      'Optional. Sent automatically (hidden) as the first message of each new conversation, so the agent knows who it is talking to — e.g. "Hi, it\'s Alex. Please greet me briefly."',
+      'Optional. Sent automatically (hidden) as the first message of each new conversation, so the agent knows who it is talking to. Each conversation\'s topic (its name, e.g. a preset title) is added automatically as "This conversation is about: …". To place the topic yourself, write {topic} — e.g. "Hi, it\'s Alex. This conversation is about {topic}. Please greet me briefly." Even without a greeting, named conversations still tell the agent their topic.',
     required: false,
     default: null,
     minRows: 2,
