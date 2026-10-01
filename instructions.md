@@ -134,6 +134,15 @@ certificate without the Custom CA Certificate. An authentication error means
 the master password is wrong — re-enter it exactly in Configure External
 Services.
 
+**Health checks:**
+The service page shows a check for each enabled external service and, if
+Vaultwarden is enabled, for the vault. External checks only test that the
+service is reachable from OpenClaw (every minute); they do not test stored
+API keys. A red check names the address that failed. "Could not resolve host"
+usually means a `.local` name without a Custom Host Mapping; a certificate
+error means the Custom CA Certificate is missing. The vault check performs a
+full unlock every 5 minutes, so a wrong master password shows up quickly.
+
 **Skills not working after enabling a service:**
 OpenClaw must be restarted after configuring external services. The restart
 happens automatically when you save the Configure External Services action.

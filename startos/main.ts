@@ -29,6 +29,12 @@ import {
   splitPemCerts,
   writeMasterPassword,
 } from './vault'
+import {
+  externalChecks,
+  externalTrigger,
+  probeVault,
+  vaultTrigger,
+} from './healthChecks'
 
 // Maps each provider's auth-profile id to the env var OpenClaw reads its API
 // key from. Keep in sync with MANAGED_PROVIDERS in configureApiCredentials.ts.
@@ -218,6 +224,38 @@ export const main = sdk.setupMain(async ({ effects }) => {
     'qdrant-sub',
   )
 
+  const extChecks = externalChecks(ext)
+  const vaultCheck = vw?.enabled
+    ? { display: 'Vault (rbw)', fn: probeVault }
+    : {
+        display: null,
+        fn: async () => ({ result: 'disabled' as const, message: null }),
+      }
+
+  // Qdrant readiness: port open, then Qdrant's own /readyz. If the readyz
+  // fetch itself can't be made, fall back to the port result so a probe
+  // quirk can never hold the gateway (which requires qdrant) hostage.
+  const qdrantReady = async () => {
+    const port = await sdk.healthCheck.checkPortListening(effects, qdrantPort, {
+      successMessage: i18n('Qdrant is ready'),
+      errorMessage: i18n('Qdrant is not ready'),
+    })
+    if (port.result !== 'success') return port
+    try {
+      const r = await fetch(`${qdrantUrl}/readyz`, {
+        signal: AbortSignal.timeout(5_000),
+      })
+      return r.ok
+        ? port
+        : {
+            result: 'loading' as const,
+            message: `Qdrant is starting (readyz HTTP ${r.status})`,
+          }
+    } catch {
+      return port
+    }
+  }
+
   return (
     sdk.Daemons.of(effects)
       .addOneshot('install-root-ca', {
@@ -389,11 +427,7 @@ export const main = sdk.setupMain(async ({ effects }) => {
         },
         ready: {
           display: i18n('Qdrant Vector Database'),
-          fn: () =>
-            sdk.healthCheck.checkPortListening(effects, qdrantPort, {
-              successMessage: i18n('Qdrant is ready'),
-              errorMessage: i18n('Qdrant is not ready'),
-            }),
+          fn: qdrantReady,
           gracePeriod: 30_000,
         },
         requires: [],
@@ -522,6 +556,87 @@ export const main = sdk.setupMain(async ({ effects }) => {
           },
         },
         requires: ['primary', 'check-login'],
+      })
+      .addHealthCheck('vault', {
+        ready: {
+          display: vaultCheck.display,
+          fn: () => vaultCheck.fn(openclawSub),
+          trigger: vaultTrigger,
+          gracePeriod: 0,
+        },
+        requires: ['setup-vault'],
+      })
+      .addHealthCheck('ext-vaultwarden', {
+        ready: {
+          display: extChecks.vaultwarden.display,
+          fn: () => extChecks.vaultwarden.fn(openclawSub),
+          trigger: externalTrigger,
+          gracePeriod: 0,
+        },
+        requires: ['network-setup'],
+      })
+      .addHealthCheck('ext-ollama', {
+        ready: {
+          display: extChecks.ollama.display,
+          fn: () => extChecks.ollama.fn(openclawSub),
+          trigger: externalTrigger,
+          gracePeriod: 0,
+        },
+        requires: ['network-setup'],
+      })
+      .addHealthCheck('ext-nas', {
+        ready: {
+          display: extChecks.nas.display,
+          fn: () => extChecks.nas.fn(openclawSub),
+          trigger: externalTrigger,
+          gracePeriod: 0,
+        },
+        requires: ['network-setup'],
+      })
+      .addHealthCheck('ext-n8n', {
+        ready: {
+          display: extChecks.n8n.display,
+          fn: () => extChecks.n8n.fn(openclawSub),
+          trigger: externalTrigger,
+          gracePeriod: 0,
+        },
+        requires: ['network-setup'],
+      })
+      .addHealthCheck('ext-trilium', {
+        ready: {
+          display: extChecks.trilium.display,
+          fn: () => extChecks.trilium.fn(openclawSub),
+          trigger: externalTrigger,
+          gracePeriod: 0,
+        },
+        requires: ['network-setup'],
+      })
+      .addHealthCheck('ext-stirling', {
+        ready: {
+          display: extChecks.stirling.display,
+          fn: () => extChecks.stirling.fn(openclawSub),
+          trigger: externalTrigger,
+          gracePeriod: 0,
+        },
+        requires: ['network-setup'],
+      })
+      .addHealthCheck('ext-searxng', {
+        ready: {
+          display: extChecks.searxng.display,
+          fn: () => extChecks.searxng.fn(openclawSub),
+          trigger: externalTrigger,
+          gracePeriod: 0,
+        },
+        requires: ['network-setup'],
+      })
+      .addHealthCheck('ext-firecrawl', {
+        ready: {
+          display: extChecks.firecrawl.display,
+          fn: () => extChecks.firecrawl.fn(openclawSub),
+          trigger: externalTrigger,
+          gracePeriod: 0,
+        },
+        requires: ['network-setup'],
       })
   )
 })

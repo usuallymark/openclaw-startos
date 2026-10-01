@@ -1,13 +1,13 @@
 import { IMPOSSIBLE, VersionInfo } from '@start9labs/start-sdk'
 
 export const current = VersionInfo.of({
-  version: '2026.9.4:2',
+  version: '2026.9.4:3',
   releaseNotes: {
-    en_US: `Finishes the Vaultwarden credential path.
+    en_US: `Adds health checks for the vault and external services.
 
-- **Configure External Services** gains **Custom Host Mappings** (written to /etc/hosts — needed for \`.local\` names, which StartOS will not resolve) and a **Custom CA Certificate** field for internal HTTPS services.
-- Vaultwarden now logs in with the master password only (rbw cannot use an API key). The password is kept byte-exact in a private file and answered by a non-interactive pinentry, so the vault unlocks at startup and re-unlocks on demand.
-- The API Key field is removed and the master password is no longer stored in the settings file.`,
+- **Vault (rbw)**: every 5 minutes, confirms the vault unlocks end-to-end (master password, pinentry and Vaultwarden connection).
+- **External services**: each enabled service in Configure External Services (Vaultwarden, Ollama, NAS, n8n, Trilium, Stirling PDF, SearXNG, Firecrawl) gets a reachability check every minute, run from inside the service so host mappings and custom CA certificates apply. No credentials are sent.
+- **Qdrant**: now waits for Qdrant's own readiness endpoint, not just an open port.`,
   },
   migrations: {
     up: async () => {},
