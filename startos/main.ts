@@ -40,6 +40,8 @@ import {
 } from './vault'
 import {
   externalChecks,
+  externalTargets,
+  type HealthTarget,
   externalTrigger,
   probeHttp,
   probeVault,
@@ -82,6 +84,7 @@ export const main = sdk.setupMain(async ({ effects }) => {
   const enabledSkills: string[] = [
     '/opt/skills/start-cli',
     '/opt/skills/qdrant',
+    '/opt/skills/health',
   ]
 
   const vw = ext?.vaultwarden
@@ -208,6 +211,40 @@ export const main = sdk.setupMain(async ({ effects }) => {
     })
     .const()
   const qdrantUrl = `http://${qdrantAddr}`
+
+  // What /opt/skills/health/health.py checks: the same targets as the
+  // StartOS health list (externalTargets is shared with externalChecks).
+  const healthTargets: HealthTarget[] = [
+    {
+      key: 'gateway',
+      label: 'Web Interface',
+      kind: 'http',
+      url: `http://127.0.0.1:${uiPort}/healthz`,
+      okBelow: 300,
+    },
+    {
+      key: 'qdrant',
+      label: 'Qdrant',
+      kind: 'http',
+      url: `${qdrantUrl}/readyz`,
+      okBelow: 300,
+    },
+    ...(webchatEnabled
+      ? [
+          {
+            key: 'webchat',
+            label: 'Webchat',
+            kind: 'http' as const,
+            url: `http://127.0.0.1:${webchatPort}/healthz`,
+            okBelow: 300,
+          },
+        ]
+      : []),
+    ...(vw?.enabled
+      ? [{ key: 'vault', label: 'Vault (rbw)', kind: 'vault' as const }]
+      : []),
+    ...externalTargets(ext),
+  ]
 
   // Load only the skills for enabled services.
   await openclawJson.merge(effects, {
@@ -484,6 +521,7 @@ export const main = sdk.setupMain(async ({ effects }) => {
           OPENCLAW_STATE_DIR: '/data/.openclaw',
           NODE_EXTRA_CA_CERTS: '/etc/ssl/certs/ca-certificates.crt',
           QDRANT_URL: qdrantUrl,
+          OPENCLAW_HEALTH_TARGETS: JSON.stringify(healthTargets),
           // rbw XDG paths so skills can call rbw with the unlocked agent
           XDG_CONFIG_HOME: '/data/.openclaw/rbw/config',
           XDG_CACHE_HOME: '/data/.openclaw/rbw/cache',

@@ -161,7 +161,7 @@ export async function probeVault(sub: Sub): Promise<Result> {
 
 // ── Per-service specs, built from the external-services config ─────────────
 
-type ExtConfig =
+export type ExtConfig =
   | {
       vaultwarden?: { enabled?: boolean; url?: string }
       ollama?: { enabled?: boolean; url?: string }
@@ -180,37 +180,88 @@ export type CheckSpec = {
   fn: (sub: Sub) => Promise<Result>
 }
 
-function http(
-  label: string,
-  svc: { enabled?: boolean; url?: string } | undefined,
-  path: string,
-): CheckSpec {
-  if (!svc?.enabled || !svc.url) {
-    return { display: null, fn: async () => DISABLED }
+/**
+ * One enabled check, as plain data. The StartOS health checks below and the
+ * in-container probe (/opt/skills/health/health.py, via the
+ * OPENCLAW_HEALTH_TARGETS env var) are both built from these, so the agent's
+ * report and the UI cannot drift apart.
+ */
+export type HealthTarget =
+  | { key: string; label: string; kind: 'http'; url: string; okBelow?: number }
+  | { key: string; label: string; kind: 'tcp'; host: string; port: number }
+  | { key: string; label: string; kind: 'vault' }
+
+// Health path per HTTP service, appended to the configured URL.
+const HTTP_PATHS = {
+  vaultwarden: ['Vaultwarden', '/alive'],
+  ollama: ['Ollama', '/api/tags'],
+  n8n: ['n8n', '/healthz'],
+  // Trilium's URL already ends in /etapi; app-info answers 401 without a
+  // token, which still proves the ETAPI is up.
+  trilium: ['Trilium', '/app-info'],
+  stirling: ['Stirling PDF', '/api/v1/info/status'],
+  searxng: ['SearXNG', '/healthz'],
+  // /health needs no token and answers {"status":"ok",...}.
+  crawl4ai: ['Crawl4AI', '/health'],
+} as const
+
+type HttpKey = keyof typeof HTTP_PATHS
+
+/** Enabled external-service targets, in display order. */
+export function externalTargets(ext: ExtConfig): HealthTarget[] {
+  const out: HealthTarget[] = []
+  const push = (key: HttpKey) => {
+    const svc = ext?.[key]
+    if (!svc?.enabled || !svc.url) return
+    const [label, path] = HTTP_PATHS[key]
+    out.push({ key, label, kind: 'http', url: joinUrl(svc.url, path) })
   }
-  const url = joinUrl(svc.url, path)
-  return { display: label, fn: (sub) => probeHttp(sub, label, url) }
+  push('vaultwarden')
+  push('ollama')
+  const nas = ext?.nas
+  if (nas?.enabled && nas.host) {
+    out.push({
+      key: 'nas',
+      label: 'NAS (SMB)',
+      kind: 'tcp',
+      host: nas.host,
+      port: 445,
+    })
+  }
+  push('n8n')
+  push('trilium')
+  push('stirling')
+  push('searxng')
+  push('crawl4ai')
+  return out
+}
+
+function specFor(t: HealthTarget | undefined): CheckSpec {
+  if (!t) return { display: null, fn: async () => DISABLED }
+  if (t.kind === 'http') {
+    return { display: t.label, fn: (sub) => probeHttp(sub, t.label, t.url) }
+  }
+  if (t.kind === 'tcp') {
+    // The UI keeps calling the NAS "NAS" in messages.
+    return {
+      display: t.label,
+      fn: (sub) =>
+        probeTcp(sub, t.key === 'nas' ? 'NAS' : t.label, t.host, t.port),
+    }
+  }
+  return { display: t.label, fn: probeVault }
 }
 
 export function externalChecks(ext: ExtConfig) {
-  const nas = ext?.nas
+  const byKey = new Map(externalTargets(ext).map((t) => [t.key, t]))
   return {
-    vaultwarden: http('Vaultwarden', ext?.vaultwarden, '/alive'),
-    ollama: http('Ollama', ext?.ollama, '/api/tags'),
-    n8n: http('n8n', ext?.n8n, '/healthz'),
-    // Trilium's URL already ends in /etapi; app-info answers 401 without a
-    // token, which still proves the ETAPI is up.
-    trilium: http('Trilium', ext?.trilium, '/app-info'),
-    stirling: http('Stirling PDF', ext?.stirling, '/api/v1/info/status'),
-    searxng: http('SearXNG', ext?.searxng, '/healthz'),
-    // /health needs no token and answers {"status":"ok",...}.
-    crawl4ai: http('Crawl4AI', ext?.crawl4ai, '/health'),
-    nas:
-      nas?.enabled && nas.host
-        ? {
-            display: 'NAS (SMB)',
-            fn: (sub: Sub) => probeTcp(sub, 'NAS', nas.host!, 445),
-          }
-        : { display: null, fn: async () => DISABLED },
+    vaultwarden: specFor(byKey.get('vaultwarden')),
+    ollama: specFor(byKey.get('ollama')),
+    n8n: specFor(byKey.get('n8n')),
+    trilium: specFor(byKey.get('trilium')),
+    stirling: specFor(byKey.get('stirling')),
+    searxng: specFor(byKey.get('searxng')),
+    crawl4ai: specFor(byKey.get('crawl4ai')),
+    nas: specFor(byKey.get('nas')),
   } satisfies Record<string, CheckSpec>
 }
