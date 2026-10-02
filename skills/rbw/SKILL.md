@@ -32,22 +32,29 @@ The vault is unlocked automatically at startup if Vaultwarden is configured.
 rbw uses a non-interactive pinentry, so if the vault has locked (timeout or
 agent restart), the next `rbw get` unlocks it again on its own.
 
-## Credentials of configured services: use getcred
+## Credentials of configured services: use auth_headers / getcred
 
 For credentials set in Configure External Services (`NAS_USER`, `NAS_PASS`,
-`N8N_KEY`, `TRILIUM_KEY`, `STIRLING_KEY`), always use `getcred`. It returns
-the value whether the user chose "Enter manually" or "Fetch from
+`N8N_KEY`, `TRILIUM_KEY`, `STIRLING_KEY`), never call rbw yourself. These
+helpers work whether the user chose "Enter manually" or "Fetch from
 Vaultwarden" (the `<VAR>_FROM_VAULT` pointers are resolved for you):
 
 ```python
 import sys; sys.path.insert(0, '/opt/skills/rbw')
-from creds import getcred
-key = getcred('N8N_KEY')                       # raises if not configured
-key = getcred('STIRLING_KEY', required=False)  # '' if not configured
+from creds import auth_headers, getcred
+hdrs = auth_headers('X-N8N-API-KEY', 'N8N_KEY')                  # raises if not configured
+hdrs = auth_headers('X-API-KEY', 'STIRLING_KEY', required=False)  # {} if not configured
+getcred('N8N_KEY')                                                # raw value, if a header won't do
 ```
 
 From a shell: `getcred N8N_KEY` (prints without a newline; exit 1 if not
-configured). Use `rbw get` directly only for other vault entries.
+configured).
+
+Do not assign a credential to a variable whose name ends in `KEY`,
+`TOKEN`, `SECRET` or `PASSWORD`, or to `password`/`api_key`-style names.
+OpenClaw masks the right-hand side of such assignments in tool output, so
+code you read back or copy from output arrives broken (the call is replaced
+by `***`). Pass the value straight into a header or function call instead.
 
 ## Fetching a Credential
 

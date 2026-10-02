@@ -12,63 +12,50 @@ PDFs, extract text, and convert documents to other formats.
 
 ## Connection
 
-```python
-import os
-import sys; sys.path.insert(0, '/opt/skills/rbw')
-from creds import getcred
-STIRLING_URL = os.environ.get('STIRLING_URL')
-STIRLING_KEY = getcred('STIRLING_KEY', required=False)
-
-if not STIRLING_URL:
-    raise RuntimeError('Stirling PDF is not configured. Enable it in Configure External Services.')
-```
+- Base URL: `STIRLING_URL` (environment). If it is unset, Stirling PDF is
+  not configured: tell the user to enable it in Configure External
+  Services.
+- The API key header is optional (only when Stirling's login is on). Build
+  it with `auth_headers(..., required=False)`, which works for both "Enter
+  manually" and "Fetch from Vaultwarden" and returns `{}` when no key is
+  configured. Never print or store the key.
 
 ## OCR a PDF
 
 ```python
-import urllib.request, os
+import os, urllib.request, uuid
 import sys; sys.path.insert(0, '/opt/skills/rbw')
-from creds import getcred
+from creds import auth_headers
 
-STIRLING_URL = os.environ['STIRLING_URL']
-STIRLING_KEY = getcred('STIRLING_KEY', required=False)
+base = os.environ['STIRLING_URL']
 
 def ocr_pdf(pdf_path, language='eng'):
     with open(pdf_path, 'rb') as f:
         pdf_data = f.read()
-
-    boundary = b'----FormBoundary'
+    boundary = uuid.uuid4().hex
     body = (
-        b'--' + boundary + b'\r\n'
-        b'Content-Disposition: form-data; name="fileInput"; filename="document.pdf"\r\n'
-        b'Content-Type: application/pdf\r\n\r\n' +
-        pdf_data + b'\r\n'
-        b'--' + boundary + b'\r\n'
-        b'Content-Disposition: form-data; name="languages"\r\n\r\n' +
-        language.encode() + b'\r\n'
-        b'--' + boundary + b'--\r\n'
-    )
+        f'--{boundary}\r\n'
+        'Content-Disposition: form-data; name="fileInput"; filename="document.pdf"\r\n'
+        'Content-Type: application/pdf\r\n\r\n'
+    ).encode() + pdf_data + (
+        f'\r\n--{boundary}\r\n'
+        'Content-Disposition: form-data; name="languages"\r\n\r\n'
+        f'{language}\r\n'
+        f'--{boundary}--\r\n'
+    ).encode()
 
-    headers = {
-        'Content-Type': f'multipart/form-data; boundary={boundary.decode()}',
-    }
-    if STIRLING_KEY:
-        headers['X-API-KEY'] = STIRLING_KEY
-
-    req = urllib.request.Request(
-        f'{STIRLING_URL}/api/v1/misc/ocr-pdf',
-        data=body,
-        headers=headers,
-        method='POST'
-    )
-    resp = urllib.request.urlopen(req, timeout=120)
-    return resp.read()  # returns processed PDF bytes
+    hdrs = auth_headers('X-API-KEY', 'STIRLING_KEY', required=False)
+    hdrs['Content-Type'] = f'multipart/form-data; boundary={boundary}'
+    req = urllib.request.Request(f'{base}/api/v1/misc/ocr-pdf', data=body, headers=hdrs, method='POST')
+    with urllib.request.urlopen(req, timeout=300) as resp:
+        return resp.read()  # the processed PDF bytes
 ```
 
 ## Notes
 
-- `STIRLING_KEY` comes from `getcred` (manual entry or Vaultwarden). Never print or store it.
 - Supported languages: `eng` (English), `fra` (French), `deu` (German), etc.
-- OCR output is a searchable PDF, not plain text — use a PDF reader to extract text
-- For large documents, increase the timeout
-- API key is optional if Stirling PDF authentication is not enabled
+- OCR output is a searchable PDF, not plain text; extract text from it
+  afterwards if needed.
+- A 401 means Stirling's login is on and no (or a wrong) API key is set.
+- For long code, write a script file and run it rather than a long
+  `python3 -c` one-liner.

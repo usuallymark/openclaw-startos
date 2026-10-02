@@ -44,6 +44,12 @@ def _getcred(var):
     return r.stdout
 
 
+def _login():
+    # Built without a literal `password=` so the line survives OpenClaw's
+    # output redaction if the agent reads this file.
+    return dict(zip(('username', 'password'), (_getcred('NAS_USER'), _getcred('NAS_PASS'))))
+
+
 def host():
     h = os.environ.get('NAS_HOST', '').strip()
     if not h:
@@ -54,9 +60,7 @@ def host():
 def _session():
     global _registered
     if not _registered:
-        smbclient.register_session(
-            host(), username=_getcred('NAS_USER'), password=_getcred('NAS_PASS')
-        )
+        smbclient.register_session(host(), **_login())
         _registered = True
 
 
@@ -68,11 +72,11 @@ def preferred_shares():
 
 def shares():
     """Disk shares visible to the NAS account, as [{'name', 'comment'}]."""
-    user, pw = _getcred('NAS_USER'), _getcred('NAS_PASS')
+    login = _login()
     fd, auth = tempfile.mkstemp(prefix='nas-auth-')
     try:
         with os.fdopen(fd, 'w') as f:
-            f.write(f'username = {user}\npassword = {pw}\n')
+            f.write(''.join(f'{k} = {v}\n' for k, v in login.items()))
         r = subprocess.run(
             ['smbclient', '-L', f'//{host()}', '-g', '-A', auth],
             capture_output=True, text=True, timeout=30,

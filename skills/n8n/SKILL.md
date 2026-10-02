@@ -12,62 +12,68 @@ workflows, pass data between systems, and monitor background processes.
 
 ## Connection
 
-```python
-import os
-import sys; sys.path.insert(0, '/opt/skills/rbw')
-from creds import getcred
-N8N_URL = os.environ.get('N8N_URL')
-N8N_KEY = getcred('N8N_KEY', required=False)  # only the REST API needs it
-
-if not N8N_URL:
-    raise RuntimeError('n8n is not configured. Enable it in Configure External Services.')
-```
+- Base URL: `N8N_URL` (environment). If it is unset, n8n is not configured:
+  tell the user to enable it in Configure External Services.
+- REST API calls need the API key header. Build it with `auth_headers`,
+  which works for both "Enter manually" and "Fetch from Vaultwarden" and
+  keeps the key out of your code. Never print or store the key.
+- Webhooks need no key.
 
 ## Trigger a Workflow via Webhook
 
 ```python
-import json, urllib.request, os
+import json, os, urllib.request
 
-N8N_URL = os.environ['N8N_URL']
+base = os.environ['N8N_URL']
 
 def trigger_webhook(webhook_path, data):
-    body = json.dumps(data).encode()
     req = urllib.request.Request(
-        f'{N8N_URL}/webhook/{webhook_path}',
-        data=body,
+        f'{base}/webhook/{webhook_path}',
+        data=json.dumps(data).encode(),
         headers={'Content-Type': 'application/json'},
-        method='POST'
+        method='POST',
     )
-    resp = urllib.request.urlopen(req, timeout=30)
-    return json.loads(resp.read())
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return json.loads(resp.read())
 
-result = trigger_webhook('my-workflow-id', {'key': 'value'})
+result = trigger_webhook('my-webhook-path', {'hello': 'world'})
 ```
 
-## List Workflows via API
+## REST API
 
 ```python
-import json, urllib.request, os
+import json, os, urllib.request
 import sys; sys.path.insert(0, '/opt/skills/rbw')
-from creds import getcred
+from creds import auth_headers
 
-N8N_URL = os.environ['N8N_URL']
-N8N_KEY = getcred('N8N_KEY')
+base = os.environ['N8N_URL']
 
-req = urllib.request.Request(
-    f'{N8N_URL}/api/v1/workflows',
-    headers={'X-N8N-API-KEY': N8N_KEY}
-)
-resp = urllib.request.urlopen(req, timeout=10, cadefault=True)
-workflows = json.loads(resp.read())
-for wf in workflows.get('data', []):
+def n8n_api(method, path, data=None):
+    hdrs = auth_headers('X-N8N-API-KEY', 'N8N_KEY')
+    hdrs['Accept'] = 'application/json'
+    body = None
+    if data is not None:
+        body = json.dumps(data).encode()
+        hdrs['Content-Type'] = 'application/json'
+    req = urllib.request.Request(f'{base}/api/v1{path}', data=body, headers=hdrs, method=method)
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        raw = resp.read()
+        return json.loads(raw) if raw else None
+
+for wf in n8n_api('GET', '/workflows').get('data', []):
     print(f"{wf['id']}: {wf['name']} ({'active' if wf['active'] else 'inactive'})")
 ```
 
+Other calls use the same helper, e.g. `n8n_api('GET', '/executions?limit=10')`.
+
 ## Notes
 
-- `N8N_KEY` comes from `getcred` (manual entry or Vaultwarden). Never print or store it.
-- Webhook URLs don't require authentication
-- API calls require the `X-N8N-API-KEY` header
-- n8n may use self-signed TLS — if SSL errors occur, the URL may need to use http://
-- Find your webhook URL in n8n → Workflow → Webhook node → Test URL
+- Activating, deactivating, editing or deleting workflows changes the
+  user's automations: only do it when the user asked for that specific
+  change, and say exactly what you changed.
+- For long code, write a script file and run it rather than a long
+  `python3 -c` one-liner.
+- HTTPS to internal hosts works when the internal CA was added in Configure
+  External Services; on a certificate error, report it rather than turning
+  verification off or switching to http://.
+- Find a webhook path in n8n → Workflow → Webhook node.

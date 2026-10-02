@@ -13,79 +13,67 @@ should persist outside of AI memory.
 
 ## Connection
 
-```python
-import os
-import sys; sys.path.insert(0, '/opt/skills/rbw')
-from creds import getcred
-TRILIUM_URL = os.environ.get('TRILIUM_URL')
-TRILIUM_KEY = getcred('TRILIUM_KEY')
+- Base URL: `TRILIUM_URL` (environment; ends in `/etapi`). If it is unset,
+  Trilium is not configured: tell the user to enable it in Configure
+  External Services.
+- Every call needs the ETAPI token header. Build it with `auth_headers`,
+  which works for both "Enter manually" and "Fetch from Vaultwarden" and
+  keeps the token out of your code. Never print or store the token.
 
-if not TRILIUM_URL:
-    raise RuntimeError('Trilium is not configured. Enable it in Configure External Services.')
+## Helper
+
+```python
+import json, os, urllib.parse, urllib.request
+import sys; sys.path.insert(0, '/opt/skills/rbw')
+from creds import auth_headers
+
+base = os.environ['TRILIUM_URL']
+
+def etapi(method, path, data=None, raw=False):
+    hdrs = auth_headers('Authorization', 'TRILIUM_KEY')
+    body = None
+    if data is not None:
+        body = json.dumps(data).encode()
+        hdrs['Content-Type'] = 'application/json'
+    req = urllib.request.Request(f'{base}{path}', data=body, headers=hdrs, method=method)
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        out = resp.read()
+        if raw:
+            return out.decode()
+        return json.loads(out) if out else None
 ```
 
 ## Create a Note
 
 ```python
-import json, urllib.request, os
-import sys; sys.path.insert(0, '/opt/skills/rbw')
-from creds import getcred
-
-TRILIUM_URL = os.environ['TRILIUM_URL']
-TRILIUM_KEY = getcred('TRILIUM_KEY')
-
-def trilium_create_note(parent_note_id, title, content, note_type='text'):
-    body = json.dumps({
-        'parentNoteId': parent_note_id,
-        'title': title,
-        'type': note_type,
-        'content': content,
-    }).encode()
-    req = urllib.request.Request(
-        f'{TRILIUM_URL}/create-note',
-        data=body,
-        headers={
-            'Content-Type': 'application/json',
-            'Authorization': TRILIUM_KEY,
-        },
-        method='POST'
-    )
-    resp = urllib.request.urlopen(req, timeout=10)
-    return json.loads(resp.read())
-
-result = trilium_create_note('root', 'Research Note', '<p>Content here</p>')
+result = etapi('POST', '/create-note', {
+    'parentNoteId': 'root',
+    'title': 'Research Note',
+    'type': 'text',
+    'content': '<p>Content here</p>',
+})
 print(result['note']['noteId'])
 ```
 
 ## Search Notes
 
 ```python
-def trilium_search(query):
-    encoded = urllib.parse.quote(query)
-    req = urllib.request.Request(
-        f'{TRILIUM_URL}/notes?search={encoded}',
-        headers={'Authorization': TRILIUM_KEY}
-    )
-    resp = urllib.request.urlopen(req, timeout=10)
-    return json.loads(resp.read())
+found = etapi('GET', '/notes?search=' + urllib.parse.quote('photo pipeline'))
+for n in found.get('results', []):
+    print(n['noteId'], n['title'])
 ```
 
 ## Get Note Content
 
 ```python
-def trilium_get_note(note_id):
-    req = urllib.request.Request(
-        f'{TRILIUM_URL}/notes/{note_id}/content',
-        headers={'Authorization': TRILIUM_KEY}
-    )
-    resp = urllib.request.urlopen(req, timeout=10)
-    return resp.read().decode()
+html = etapi('GET', f'/notes/{note_id}/content', raw=True)
 ```
 
 ## Notes
 
-- `TRILIUM_KEY` comes from `getcred` (manual entry or Vaultwarden). Never print or store it.
-- The URL should include the `/etapi` path, e.g. `https://trilium.yourdomain.local/etapi`
-- Content is HTML for text notes; use plain `<p>` tags for simple notes
-- `root` is the top-level parent note ID
-- Find note IDs by right-clicking a note in Trilium → Note Info
+- Content is HTML for text notes; use plain `<p>` tags for simple notes.
+- `root` is the top-level parent note ID.
+- Find note IDs in Trilium via the note's menu → Note Info.
+- Deleting or overwriting notes: confirm with the user first.
+- For long code, write a script file and run it rather than a long
+  `python3 -c` one-liner.

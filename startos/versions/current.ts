@@ -1,13 +1,12 @@
 import { IMPOSSIBLE, VersionInfo } from '@start9labs/start-sdk'
 
 export const current = VersionInfo.of({
-  version: '2026.9.4:7',
+  version: '2026.9.4:8',
   releaseNotes: {
-    en_US: `NAS works again, and "Fetch from Vaultwarden" now works for every service.
+    en_US: `Skills for n8n, Trilium and Stirling PDF no longer break when the agent copies their examples.
 
-- NAS: the SMB tools now ship in the package (they were lost in the move to StartOS 0.4). The agent can list the NAS shares and use any share the NAS account is allowed to open.
-- NAS: "Share Name" is now "Preferred Shares (optional)": a comma-separated list of where to look first, not a restriction. To limit access, set permissions on the NAS account.
-- Credentials set to "Fetch from Vaultwarden" (NAS, n8n, Trilium, Stirling PDF) are now looked up when they are used, so a changed vault entry takes effect without a restart. Before, they were treated as missing.`,
+- OpenClaw hides the value of lines like \`SOMETHING_KEY = …\` in tool output. When the agent read a skill's example and copied it, the credential lookup arrived as \`***\` and the code failed. The examples now pass credentials straight into request headers, so nothing is hidden or broken.
+- n8n: the agent is told to change, activate or deactivate workflows only when you ask for that specific change.`,
   },
   migrations: {
     up: async () => {},
