@@ -1,11 +1,11 @@
 import { IMPOSSIBLE, VersionInfo } from '@start9labs/start-sdk'
 
 export const current = VersionInfo.of({
-  version: '2026.9.4:11',
+  version: '2026.9.4:12',
   releaseNotes: {
-    en_US: `Vault entries added or changed in Vaultwarden are found without a manual sync.
+    en_US: `Webchat: copy button on code blocks.
 
-- rbw answers from a local copy of the vault that it refreshes only now and then. When a credential lookup ("Fetch from Vaultwarden") fails or comes back empty, it now runs \`rbw sync\` once (at most 30 seconds) and tries again before reporting an error.`,
+- Code blocks in the agent's replies now have a header showing the language (when given) and a Copy button that puts the code on the clipboard. It also works when the webchat is opened over plain HTTP.`,
   },
   migrations: {
     up: async () => {},

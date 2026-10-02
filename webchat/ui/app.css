@@ -75,6 +75,16 @@ button{font:inherit;color:inherit}
 .md code{font-family:var(--mono);font-size:.84em;background:rgba(255,255,255,.07);border-radius:4px;padding:.08em .35em}
 .md pre{background:#0d0d0d;border:1px solid var(--border);border-radius:8px;padding:.7rem .8rem;overflow-x:auto;margin:0 0 .6em}
 .md pre code{background:none;padding:0;font-size:.82rem;white-space:pre}
+.md .code-block{background:#0d0d0d;border:1px solid var(--border);border-radius:8px;margin:0 0 .6em;overflow:hidden}
+.md .code-block:last-child{margin-bottom:0}
+.md .code-block pre{background:none;border:none;border-radius:0;margin:0}
+.md .code-head{display:flex;align-items:center;justify-content:space-between;gap:.5rem;padding:.25rem .35rem .25rem .8rem;border-bottom:1px solid var(--border);background:rgba(255,255,255,.03)}
+.md .code-lang{font-family:var(--mono);font-size:.72rem;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.md .code-copy{display:inline-flex;align-items:center;gap:.3rem;flex-shrink:0;background:none;border:none;border-radius:6px;color:var(--text-dim);cursor:pointer;font:inherit;font-size:.75rem;line-height:1;padding:.3rem .5rem}
+.md .code-copy:hover{color:var(--text);background:rgba(255,255,255,.06)}
+.md .code-copy:focus-visible{outline:1px solid var(--accent);outline-offset:1px}
+.md .code-copy.done{color:var(--accent)}
+.md .code-copy svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .md a{color:var(--accent)}
 .md blockquote{border-left:2px solid rgba(var(--accent-rgb),.5);padding-left:.75em;color:var(--text-dim);margin:0 0 .6em}
 .md hr{border:none;border-top:1px solid var(--border);margin:.8em 0}
@@ -130,6 +140,7 @@ button{font:inherit;color:inherit}
   .sidebar-overlay.visible{display:block}
   .conv-item{min-height:46px}
   .icon-btn{opacity:1;font-size:1.05rem;min-width:34px;min-height:34px}
+  .md .code-copy{min-height:34px;padding:.3rem .65rem}
   #msg-input,.conv-name[contenteditable="true"],.modal input{font-size:16px}
   .msg{max-width:92%}
   .header,.input-area,#messages{padding-left:.9rem;padding-right:.9rem}

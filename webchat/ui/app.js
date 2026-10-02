@@ -545,17 +545,68 @@
 
   function markdown(src) {
     const out = []
-    const parts = src.split(/^```[^\n]*\n?/m)
-    // even indexes: prose, odd: code (an unclosed fence during streaming stays code)
-    parts.forEach((part, i) => {
-      if (i % 2 === 1) {
-        out.push(`<pre><code>${escHtml(part.replace(/\n$/, ''))}</code></pre>`)
-      } else {
-        out.push(blocks(escHtml(part)))
-      }
-    })
+    // With the fence's info string captured, the parts repeat as
+    // prose, opening info, code, closing info. An unclosed fence during
+    // streaming stays code.
+    const parts = src.split(/^```([^\n]*)\n?/m)
+    for (let i = 0; i < parts.length; i += 4) {
+      out.push(blocks(escHtml(parts[i])))
+      if (i + 2 < parts.length) out.push(codeBlock(parts[i + 1], parts[i + 2]))
+    }
     return out.join('')
   }
+
+  const COPY_ICON =
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>'
+  function codeBlock(info, code) {
+    const lang = (info.trim().split(/\s+/)[0] || '').replace(/[^\w+#.-]/g, '').slice(0, 24)
+    return (
+      '<div class="code-block"><div class="code-head">' +
+      `<span class="code-lang">${escHtml(lang)}</span>` +
+      `<button type="button" class="code-copy" title="Copy code" aria-label="Copy code">${COPY_ICON}<span>Copy</span></button>` +
+      `</div><pre><code>${escHtml(code.replace(/\n$/, ''))}</code></pre></div>`
+    )
+  }
+
+  // ── Copy code ─────────────────────────────────────────────────────────────
+  async function copyText(text) {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text)
+        return true
+      }
+    } catch {}
+    // Plain-HTTP pages have no Clipboard API; fall back to a hidden textarea.
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.setAttribute('readonly', '')
+    ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none;font-size:16px'
+    document.body.append(ta)
+    ta.select()
+    ta.setSelectionRange(0, text.length)
+    let ok = false
+    try {
+      ok = document.execCommand('copy')
+    } catch {}
+    ta.remove()
+    return ok
+  }
+  els.msgs.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.code-copy')
+    if (!btn) return
+    const code = btn.closest('.code-block')?.querySelector('code')
+    if (!code) return
+    const ok = await copyText(code.textContent)
+    const label = btn.querySelector('span')
+    if (!label) return
+    label.textContent = ok ? 'Copied' : 'Copy failed'
+    btn.classList.toggle('done', ok)
+    clearTimeout(btn._t)
+    btn._t = setTimeout(() => {
+      label.textContent = 'Copy'
+      btn.classList.remove('done')
+    }, 1600)
+  })
 
   function blocks(s) {
     const lines = s.split('\n')
