@@ -50,6 +50,11 @@ getcred('N8N_KEY')                                                # raw value, i
 From a shell: `getcred N8N_KEY` (prints without a newline; exit 1 if not
 configured).
 
+rbw answers from a local copy of the vault. If a lookup fails or comes back
+empty, getcred runs `rbw sync` once and tries again, so an entry added or
+corrected in Vaultwarden is found without a manual sync. When calling rbw
+directly and an entry seems missing, run `rbw sync` first.
+
 Do not assign a credential to a variable whose name ends in `KEY`,
 `TOKEN`, `SECRET` or `PASSWORD`, or to `password`/`api_key`-style names.
 OpenClaw masks the right-hand side of such assignments in tool output, so

@@ -6,7 +6,9 @@
 # "<entry>:<field>"), fetch that field from Vaultwarden with rbw and print it.
 # The value is printed without a trailing newline. Exits non-zero, with a
 # message on stderr only, if the credential is not configured or the lookup
-# fails. Secrets never appear in error messages.
+# fails. A failed or empty lookup is retried once after `rbw sync`, so vault
+# edits are picked up without a manual sync. Secrets never appear in error
+# messages.
 set -u
 
 usage() {
@@ -45,12 +47,26 @@ fi
 : "${XDG_RUNTIME_DIR:=/data/.openclaw/rbw/runtime}"
 export XDG_CONFIG_HOME XDG_CACHE_HOME XDG_RUNTIME_DIR
 
-if ! value=$(rbw get --field "$field" "$entry" 2>/dev/null); then
-  echo "getcred: Vaultwarden lookup failed for entry \"$entry\", field \"$field\" ($var). Check that Vaultwarden is enabled and the entry and field exist." >&2
-  exit 1
-fi
-if [ -z "$value" ]; then
-  echo "getcred: Vaultwarden entry \"$entry\", field \"$field\" is empty ($var)" >&2
-  exit 1
+lookup() {
+  value=$(rbw get --field "$field" "$entry" 2>/dev/null) && [ -n "$value" ]
+}
+
+# rbw answers from its local copy of the vault, which it refreshes only
+# now and then, so an entry added or fixed in Vaultwarden may not be seen
+# yet. On a miss, sync once (quietly, with a time limit) and look again.
+if ! lookup; then
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 30 rbw sync >/dev/null 2>&1
+  else
+    rbw sync >/dev/null 2>&1
+  fi
+  if ! value=$(rbw get --field "$field" "$entry" 2>/dev/null); then
+    echo "getcred: Vaultwarden lookup failed for entry \"$entry\", field \"$field\" ($var), also after rbw sync. Check that Vaultwarden is enabled and the entry and field exist." >&2
+    exit 1
+  fi
+  if [ -z "$value" ]; then
+    echo "getcred: Vaultwarden entry \"$entry\", field \"$field\" is empty ($var), also after rbw sync" >&2
+    exit 1
+  fi
 fi
 printf '%s' "$value"
