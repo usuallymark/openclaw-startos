@@ -14,7 +14,10 @@ export const initializeService = sdk.setupOnInit(async (effects, kind) => {
 
   await startCliConfigYaml.merge(effects, { host: hostUrl })
 
-  // Always update workspace bootstrap files on install and upgrade
+  // Seed the workspace bootstrap files only when they are missing. They are
+  // the agent's identity and memory: once present they belong to the user
+  // (and may be tracked in their own git repo), so updates must not replace
+  // them.
   await mkdir(sdk.volumes.main.subpath('.openclaw/workspace/memory'), {
     recursive: true,
   })
@@ -22,23 +25,13 @@ export const initializeService = sdk.setupOnInit(async (effects, kind) => {
     effects,
     { imageId: 'openclaw' },
     mainMounts(),
-    'copy-soul',
+    'seed-workspace',
     async (subc) => {
-      await subc.execFail(
-        [
-          'cp',
-          '/opt/workspace/SOUL.md',
-          '/opt/workspace/IDENTITY.md',
-          '/data/.openclaw/workspace/',
-        ],
-        { user: 'root' },
-      )
-      // Only seed MEMORY.md if it doesn't already exist, to preserve accumulated memories
       await subc.exec(
         [
           'sh',
           '-c',
-          'test -f /data/.openclaw/workspace/MEMORY.md || cp /opt/workspace/MEMORY.md /data/.openclaw/workspace/MEMORY.md',
+          'for f in SOUL.md IDENTITY.md MEMORY.md; do test -e "/data/.openclaw/workspace/$f" || { cp "/opt/workspace/$f" "/data/.openclaw/workspace/$f" && chown node:node "/data/.openclaw/workspace/$f"; }; done',
         ],
         { user: 'root' },
       )
