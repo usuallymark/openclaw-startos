@@ -1,12 +1,12 @@
 import { IMPOSSIBLE, VersionInfo } from '@start9labs/start-sdk'
 
 export const current = VersionInfo.of({
-  version: '2026.9.4:8',
+  version: '2026.9.4:9',
   releaseNotes: {
-    en_US: `Skills for n8n, Trilium and Stirling PDF no longer break when the agent copies their examples.
+    en_US: `Faster health checks after a restart, and notes in MEMORY.md are kept.
 
-- OpenClaw hides the value of lines like \`SOMETHING_KEY = …\` in tool output. When the agent read a skill's example and copied it, the credential lookup arrived as \`***\` and the code failed. The examples now pass credentials straight into request headers, so nothing is hidden or broken.
-- n8n: the agent is told to change, activate or deactivate workflows only when you ask for that specific change.`,
+- The vault health check now runs a few seconds after startup instead of 5 minutes later. The vault was already unlocked; only the check was waiting. External-service checks also start within seconds instead of a minute.
+- At each restart the Server State Snapshot in MEMORY.md is replaced on its own. Notes the agent added after it under their own \`## \` heading are no longer deleted.`,
   },
   migrations: {
     up: async () => {},

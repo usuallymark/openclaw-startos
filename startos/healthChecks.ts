@@ -21,12 +21,21 @@ type Result =
 
 const DISABLED: Result = { result: 'disabled', message: null }
 
-// External services: 60 s while healthy, 30 s while failing.
+// statusTrigger waits one interval *before* each check, and the first wait
+// uses the `starting` interval (or the default when none is given). Without
+// `starting`, the vault check showed nothing for 5 minutes after every
+// restart even though the vault was already unlocked.
+//
+// External services: first check after 3 s, then 60 s while healthy, 30 s
+// while failing.
 export const externalTrigger = sdk.trigger.statusTrigger(60_000, {
+  starting: 3_000,
   failure: 30_000,
 })
-// Vault: an unlock round-trip every 5 minutes (1 minute while failing).
+// Vault: first check after 3 s, then an unlock round-trip every 5 minutes
+// (1 minute while failing).
 export const vaultTrigger = sdk.trigger.statusTrigger(300_000, {
+  starting: 3_000,
   failure: 60_000,
 })
 

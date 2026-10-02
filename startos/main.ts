@@ -22,6 +22,7 @@ import {
 } from './utils'
 import { webchatJson } from './fileModels/webchat.json'
 import { watchSimplexAddress, withSimplexMounts } from './simplex'
+import { replaceSnapshot } from './memorySnapshot'
 import { requestSimplexPluginUpgrade } from './actions/configureSimplex'
 import {
   RBW_ENV,
@@ -563,6 +564,7 @@ export const main = sdk.setupMain(async ({ effects }) => {
 
           const stateBlock =
             '## Server State Snapshot\n\n' +
+            '_This section is rewritten at every restart. Keep notes above it, or under their own `## ` heading._\n\n' +
             `_Captured at startup: ${new Date().toISOString()}_\n\n` +
             sections.join('\n\n') +
             '\n'
@@ -571,12 +573,7 @@ export const main = sdk.setupMain(async ({ effects }) => {
             '.openclaw/workspace/MEMORY.md',
           )
           const existing = await readFile(memoryPath, 'utf-8').catch(() => '')
-          const marker = '## Server State Snapshot'
-          const idx = existing.indexOf(marker)
-          const before =
-            idx >= 0 ? existing.slice(0, idx).trimEnd() : existing.trimEnd()
-          const updated = before ? before + '\n\n' + stateBlock : stateBlock
-          await writeFile(memoryPath, updated)
+          await writeFile(memoryPath, replaceSnapshot(existing, stateBlock))
 
           return null
         },
