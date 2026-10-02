@@ -160,9 +160,15 @@ export const main = sdk.setupMain(async ({ effects }) => {
     enabledSkills.push('/opt/skills/searxng')
   }
 
-  if (ext?.firecrawl?.enabled && ext.firecrawl.url) {
-    externalEnv['FIRECRAWL_URL'] = ext.firecrawl.url
-    enabledSkills.push('/opt/skills/firecrawl')
+  if (ext?.crawl4ai?.enabled && ext.crawl4ai.url) {
+    externalEnv['CRAWL4AI_URL'] = ext.crawl4ai.url
+    const k = ext.crawl4ai.apiKey
+    if (k?.source === 'manual' && k.value) {
+      externalEnv['CRAWL4AI_KEY'] = k.value
+    } else if (k?.source === 'from-vaultwarden') {
+      externalEnv['CRAWL4AI_KEY_FROM_VAULT'] = 'Crawl4AI:API_Key'
+    }
+    enabledSkills.push('/opt/skills/crawl4ai')
   }
 
   // Webchat (Configure Webchat). Reactive: main re-runs when it changes.
@@ -652,10 +658,10 @@ export const main = sdk.setupMain(async ({ effects }) => {
       },
       requires: ['network-setup'],
     })
-    .addHealthCheck('ext-firecrawl', {
+    .addHealthCheck('ext-crawl4ai', {
       ready: {
-        display: extChecks.firecrawl.display,
-        fn: () => extChecks.firecrawl.fn(openclawSub),
+        display: extChecks.crawl4ai.display,
+        fn: () => extChecks.crawl4ai.fn(openclawSub),
         trigger: externalTrigger,
         gracePeriod: 0,
       },

@@ -259,10 +259,10 @@ const searxngService = Value.union({
   }),
 })
 
-const firecrawlService = Value.union({
-  name: 'Firecrawl (Web Scraping)',
+const crawl4aiService = Value.union({
+  name: 'Crawl4AI (Web Scraping)',
   description:
-    'Firecrawl converts web pages into clean, structured content agents can read. No authentication required for self-hosted instances.\nGitHub: https://github.com/mendableai/firecrawl',
+    'Crawl4AI fetches web pages in a real browser (JavaScript included) and returns clean Markdown agents can read. Used when a plain fetch is not enough. Self-hosted; the API token is required since Crawl4AI 0.9.\nGitHub: https://github.com/unclecode/crawl4ai',
   default: 'disabled',
   variants: Variants.of({
     disabled: { name: 'Disabled', spec: InputSpec.of({}) },
@@ -270,9 +270,15 @@ const firecrawlService = Value.union({
       name: 'Enabled',
       spec: InputSpec.of({
         url: urlField(
-          'Firecrawl URL',
-          'The URL of your Firecrawl instance, e.g. http://192.168.0.x:3002',
-          'http://192.168.0.x:3002',
+          'Crawl4AI URL',
+          'The URL of your Crawl4AI server, e.g. https://crawl.yourdomain.local',
+          'https://crawl.yourdomain.local',
+        ),
+        apiKey: credentialUnion(
+          'API Token',
+          'Crawl4AI',
+          'API_Key',
+          'The CRAWL4AI_API_TOKEN your Crawl4AI server was started with.',
         ),
       }),
     },
@@ -348,7 +354,7 @@ const inputSpec = InputSpec.of({
   trilium: triliumService,
   stirling: stirlingService,
   searxng: searxngService,
-  firecrawl: firecrawlService,
+  crawl4ai: crawl4aiService,
 })
 
 // ── Helpers to map action input <-> stored file shape ───────────────────────
@@ -380,7 +386,7 @@ export const configureExternalServices = sdk.Action.withInput(
   async ({ effects }) => ({
     name: 'Configure External Services',
     description:
-      'Connect OpenClaw to your self-hosted tools (Vaultwarden, Ollama, NAS, n8n, Trilium, Stirling PDF, SearXNG, Firecrawl), plus host mappings and a custom CA for internal HTTPS services. Enable only the services you use. If Vaultwarden is enabled, other services can fetch their credentials from it automatically. Saving restarts OpenClaw to apply changes.',
+      'Connect OpenClaw to your self-hosted tools (Vaultwarden, Ollama, NAS, n8n, Trilium, Stirling PDF, SearXNG, Crawl4AI), plus host mappings and a custom CA for internal HTTPS services. Enable only the services you use. If Vaultwarden is enabled, other services can fetch their credentials from it automatically. Saving restarts OpenClaw to apply changes.',
     warning: null,
     allowedStatuses: 'any',
     group: null,
@@ -404,7 +410,7 @@ export const configureExternalServices = sdk.Action.withInput(
     const trilium = cfg?.trilium
     const stirling = cfg?.stirling
     const searxng = cfg?.searxng
-    const firecrawl = cfg?.firecrawl
+    const crawl4ai = cfg?.crawl4ai
 
     return {
       hostMappings: (cfg?.hostMappings ?? []).map((m) => ({
@@ -466,10 +472,13 @@ export const configureExternalServices = sdk.Action.withInput(
       searxng: searxng?.enabled
         ? { selection: 'enabled' as const, value: { url: searxng.url ?? '' } }
         : { selection: 'disabled' as const, value: {} },
-      firecrawl: firecrawl?.enabled
+      crawl4ai: crawl4ai?.enabled
         ? {
             selection: 'enabled' as const,
-            value: { url: firecrawl.url ?? '' },
+            value: {
+              url: crawl4ai.url ?? '',
+              apiKey: credToPrefill(crawl4ai.apiKey),
+            },
           }
         : { selection: 'disabled' as const, value: {} },
     }
@@ -557,9 +566,13 @@ export const configureExternalServices = sdk.Action.withInput(
         ? { enabled: true, url: i.searxng.value.url }
         : { enabled: false }
 
-    const firecrawl =
-      i.firecrawl.selection === 'enabled'
-        ? { enabled: true, url: i.firecrawl.value.url }
+    const crawl4ai =
+      i.crawl4ai.selection === 'enabled'
+        ? {
+            enabled: true,
+            url: i.crawl4ai.value.url,
+            apiKey: credToStored(i.crawl4ai.value.apiKey),
+          }
         : { enabled: false }
 
     if (newMasterPassword) {
@@ -576,7 +589,7 @@ export const configureExternalServices = sdk.Action.withInput(
       trilium,
       stirling,
       searxng,
-      firecrawl,
+      crawl4ai,
     } as any)
 
     await effects.restart()

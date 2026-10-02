@@ -35,7 +35,7 @@ agent restart), the next `rbw get` unlocks it again on its own.
 ## Credentials of configured services: use auth_headers / getcred
 
 For credentials set in Configure External Services (`NAS_USER`, `NAS_PASS`,
-`N8N_KEY`, `TRILIUM_KEY`, `STIRLING_KEY`), never call rbw yourself. These
+`N8N_KEY`, `TRILIUM_KEY`, `STIRLING_KEY`, `CRAWL4AI_KEY`), never call rbw yourself. These
 helpers work whether the user chose "Enter manually" or "Fetch from
 Vaultwarden" (the `<VAR>_FROM_VAULT` pointers are resolved for you):
 

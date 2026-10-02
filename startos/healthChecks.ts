@@ -170,7 +170,7 @@ type ExtConfig =
       trilium?: { enabled?: boolean; url?: string }
       stirling?: { enabled?: boolean; url?: string }
       searxng?: { enabled?: boolean; url?: string }
-      firecrawl?: { enabled?: boolean; url?: string }
+      crawl4ai?: { enabled?: boolean; url?: string }
     }
   | undefined
   | null
@@ -203,7 +203,8 @@ export function externalChecks(ext: ExtConfig) {
     trilium: http('Trilium', ext?.trilium, '/app-info'),
     stirling: http('Stirling PDF', ext?.stirling, '/api/v1/info/status'),
     searxng: http('SearXNG', ext?.searxng, '/healthz'),
-    firecrawl: http('Firecrawl', ext?.firecrawl, '/'),
+    // /health needs no token and answers {"status":"ok",...}.
+    crawl4ai: http('Crawl4AI', ext?.crawl4ai, '/health'),
     nas:
       nas?.enabled && nas.host
         ? {

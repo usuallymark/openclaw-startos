@@ -1,12 +1,13 @@
 import { IMPOSSIBLE, VersionInfo } from '@start9labs/start-sdk'
 
 export const current = VersionInfo.of({
-  version: '2026.9.4:9',
+  version: '2026.9.4:10',
   releaseNotes: {
-    en_US: `Faster health checks after a restart, and notes in MEMORY.md are kept.
+    en_US: `Crawl4AI replaces Firecrawl for fetching web pages.
 
-- The vault health check now runs a few seconds after startup instead of 5 minutes later. The vault was already unlocked; only the check was waiting. External-service checks also start within seconds instead of a minute.
-- At each restart the Server State Snapshot in MEMORY.md is replaced on its own. Notes the agent added after it under their own \`## \` heading are no longer deleted.`,
+- Configure External Services: "Firecrawl" is replaced by "Crawl4AI (Web Scraping)", with a URL and an API token (from Vaultwarden entry "Crawl4AI", field "API_Key", or entered manually). If you had Firecrawl enabled, enable Crawl4AI instead.
+- New crawl4ai skill: the agent uses the built-in web fetch for simple pages and Crawl4AI, which renders pages in a real browser, when that is not enough. It gets back only the page title and Markdown, not the full raw response.
+- New health check for Crawl4AI.`,
   },
   migrations: {
     up: async () => {},

@@ -34,7 +34,7 @@ self-hosted tools. Each service can be independently enabled or disabled:
 | **Trilium Notes** | Create and organize research notes |
 | **Stirling PDF** | OCR and process PDF documents |
 | **SearXNG** | Privacy-respecting web search |
-| **Firecrawl** | Extract content from web pages |
+| **Crawl4AI** | Fetch web pages in a real browser and return clean Markdown |
 
 **Configure Vaultwarden first** if you use it — once it's enabled, credential
 fields for other services will automatically offer to fetch from Vaultwarden
