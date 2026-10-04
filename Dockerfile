@@ -91,6 +91,9 @@ COPY skills/trilium/SKILL.md /opt/skills/trilium/SKILL.md
 COPY skills/stirling/SKILL.md /opt/skills/stirling/SKILL.md
 COPY skills/searxng/SKILL.md /opt/skills/searxng/SKILL.md
 COPY skills/crawl4ai/SKILL.md skills/crawl4ai/crawl4ai.py /opt/skills/crawl4ai/
+COPY skills/ntfy/SKILL.md skills/ntfy/ntfy.py /opt/skills/ntfy/
+COPY skills/ntfy/notify /usr/local/bin/notify
+RUN chmod 755 /usr/local/bin/notify
 COPY skills/webchat-present/SKILL.md /opt/skills/webchat-present/SKILL.md
 
 # Webchat (optional; started only when enabled via Configure Webchat).

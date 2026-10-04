@@ -171,6 +171,7 @@ export type ExtConfig =
       stirling?: { enabled?: boolean; url?: string }
       searxng?: { enabled?: boolean; url?: string }
       crawl4ai?: { enabled?: boolean; url?: string }
+      ntfy?: { enabled?: boolean; url?: string }
     }
   | undefined
   | null
@@ -203,6 +204,8 @@ const HTTP_PATHS = {
   searxng: ['SearXNG', '/healthz'],
   // /health needs no token and answers {"status":"ok",...}.
   crawl4ai: ['Crawl4AI', '/health'],
+  // ntfy's /v1/health needs no token and answers {"healthy":true}.
+  ntfy: ['ntfy', '/v1/health'],
 } as const
 
 type HttpKey = keyof typeof HTTP_PATHS
@@ -233,6 +236,7 @@ export function externalTargets(ext: ExtConfig): HealthTarget[] {
   push('stirling')
   push('searxng')
   push('crawl4ai')
+  push('ntfy')
   return out
 }
 
@@ -262,6 +266,7 @@ export function externalChecks(ext: ExtConfig) {
     stirling: specFor(byKey.get('stirling')),
     searxng: specFor(byKey.get('searxng')),
     crawl4ai: specFor(byKey.get('crawl4ai')),
+    ntfy: specFor(byKey.get('ntfy')),
     nas: specFor(byKey.get('nas')),
   } satisfies Record<string, CheckSpec>
 }

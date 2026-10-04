@@ -174,6 +174,18 @@ export const main = sdk.setupMain(async ({ effects }) => {
     enabledSkills.push('/opt/skills/crawl4ai')
   }
 
+  if (ext?.ntfy?.enabled && ext.ntfy.url) {
+    externalEnv['NTFY_URL'] = ext.ntfy.url
+    if (ext.ntfy.topic) externalEnv['NTFY_TOPIC'] = ext.ntfy.topic
+    const k = ext.ntfy.apiKey
+    if (k?.source === 'manual' && k.value) {
+      externalEnv['NTFY_KEY'] = k.value
+    } else if (k?.source === 'from-vaultwarden') {
+      externalEnv['NTFY_KEY_FROM_VAULT'] = 'ntfy:API_Key'
+    }
+    enabledSkills.push('/opt/skills/ntfy')
+  }
+
   // Webchat (Configure Webchat). Reactive: main re-runs when it changes.
   const webchatEnabled =
     (await webchatJson.read((c) => c.enabled).const(effects)) ?? false
@@ -700,6 +712,15 @@ export const main = sdk.setupMain(async ({ effects }) => {
       ready: {
         display: extChecks.crawl4ai.display,
         fn: () => extChecks.crawl4ai.fn(openclawSub),
+        trigger: externalTrigger,
+        gracePeriod: 0,
+      },
+      requires: ['network-setup'],
+    })
+    .addHealthCheck('ext-ntfy', {
+      ready: {
+        display: extChecks.ntfy.display,
+        fn: () => extChecks.ntfy.fn(openclawSub),
         trigger: externalTrigger,
         gracePeriod: 0,
       },

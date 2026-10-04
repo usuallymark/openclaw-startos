@@ -42,6 +42,15 @@ const urlWithKeyShape = z
   })
   .catch({ enabled: false })
 
+const ntfyShape = z
+  .object({
+    enabled: z.boolean().catch(false),
+    url: z.string().optional().catch(undefined),
+    topic: z.string().optional().catch(undefined),
+    apiKey: credentialShape.optional().catch(undefined),
+  })
+  .catch({ enabled: false })
+
 const nasShape = z
   .object({
     enabled: z.boolean().catch(false),
@@ -65,6 +74,7 @@ const shape = z.object({
   // Firecrawl (<= 2026.9.4:9) was replaced by Crawl4AI; an old `firecrawl`
   // key in the file is ignored and dropped on the next save.
   crawl4ai: urlWithKeyShape.catch({ enabled: false }),
+  ntfy: ntfyShape.catch({ enabled: false }),
 })
 
 export const externalServicesJson = FileHelper.json(

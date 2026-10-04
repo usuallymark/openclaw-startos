@@ -285,6 +285,48 @@ const crawl4aiService = Value.union({
   }),
 })
 
+const ntfyService = Value.union({
+  name: 'ntfy (Push Notifications)',
+  description:
+    'ntfy sends push notifications to your phone. Used by agents to report finished work, changes and problems. Self-hosted.\nGitHub: https://github.com/binwiederhier/ntfy',
+  default: 'disabled',
+  variants: Variants.of({
+    disabled: { name: 'Disabled', spec: InputSpec.of({}) },
+    enabled: {
+      name: 'Enabled',
+      spec: InputSpec.of({
+        url: urlField(
+          'ntfy URL',
+          'The URL of your ntfy server, e.g. https://ntfy.yourdomain.local',
+          'https://ntfy.yourdomain.local',
+        ),
+        topic: Value.text({
+          name: 'Default Topic',
+          description:
+            'Topic notifications are sent to unless the agent names another one. Letters, digits, "-" and "_" only. Subscribe to it in the ntfy app on your phone.',
+          required: true,
+          default: null,
+          masked: false,
+          placeholder: 'openclaw',
+          patterns: [
+            {
+              regex: '^[-_A-Za-z0-9]{1,64}$',
+              description:
+                'Letters, digits, "-" and "_" only (at most 64 characters).',
+            },
+          ],
+        }),
+        apiKey: credentialUnion(
+          'Access Token',
+          'ntfy',
+          'API_Key',
+          'An ntfy access token (starts with "tk_"). Create one in the ntfy web app → Account → Access tokens, or with `ntfy token add <user>` on the server.',
+        ),
+      }),
+    },
+  }),
+})
+
 // ── Network: host mappings + custom CA ──────────────────────────────────────
 
 const hostMappings = Value.list(
@@ -355,6 +397,7 @@ const inputSpec = InputSpec.of({
   stirling: stirlingService,
   searxng: searxngService,
   crawl4ai: crawl4aiService,
+  ntfy: ntfyService,
 })
 
 // ── Helpers to map action input <-> stored file shape ───────────────────────
@@ -386,7 +429,7 @@ export const configureExternalServices = sdk.Action.withInput(
   async ({ effects }) => ({
     name: 'Configure External Services',
     description:
-      'Connect OpenClaw to your self-hosted tools (Vaultwarden, Ollama, NAS, n8n, Trilium, Stirling PDF, SearXNG, Crawl4AI), plus host mappings and a custom CA for internal HTTPS services. Enable only the services you use. If Vaultwarden is enabled, other services can fetch their credentials from it automatically. Saving restarts OpenClaw to apply changes.',
+      'Connect OpenClaw to your self-hosted tools (Vaultwarden, Ollama, NAS, n8n, Trilium, Stirling PDF, SearXNG, Crawl4AI, ntfy), plus host mappings and a custom CA for internal HTTPS services. Enable only the services you use. If Vaultwarden is enabled, other services can fetch their credentials from it automatically. Saving restarts OpenClaw to apply changes.',
     warning: null,
     allowedStatuses: 'any',
     group: null,
@@ -411,6 +454,7 @@ export const configureExternalServices = sdk.Action.withInput(
     const stirling = cfg?.stirling
     const searxng = cfg?.searxng
     const crawl4ai = cfg?.crawl4ai
+    const ntfy = cfg?.ntfy
 
     return {
       hostMappings: (cfg?.hostMappings ?? []).map((m) => ({
@@ -478,6 +522,16 @@ export const configureExternalServices = sdk.Action.withInput(
             value: {
               url: crawl4ai.url ?? '',
               apiKey: credToPrefill(crawl4ai.apiKey),
+            },
+          }
+        : { selection: 'disabled' as const, value: {} },
+      ntfy: ntfy?.enabled
+        ? {
+            selection: 'enabled' as const,
+            value: {
+              url: ntfy.url ?? '',
+              topic: ntfy.topic ?? '',
+              apiKey: credToPrefill(ntfy.apiKey),
             },
           }
         : { selection: 'disabled' as const, value: {} },
@@ -575,6 +629,16 @@ export const configureExternalServices = sdk.Action.withInput(
           }
         : { enabled: false }
 
+    const ntfy =
+      i.ntfy.selection === 'enabled'
+        ? {
+            enabled: true,
+            url: i.ntfy.value.url,
+            topic: String(i.ntfy.value.topic ?? '').trim(),
+            apiKey: credToStored(i.ntfy.value.apiKey),
+          }
+        : { enabled: false }
+
     if (newMasterPassword) {
       await writeMasterPassword(newMasterPassword)
     }
@@ -590,6 +654,7 @@ export const configureExternalServices = sdk.Action.withInput(
       stirling,
       searxng,
       crawl4ai,
+      ntfy,
     } as any)
 
     await effects.restart()
