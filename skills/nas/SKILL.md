@@ -29,16 +29,16 @@ around it.
 import sys; sys.path.insert(0, '/opt/skills/nas')
 import nas
 
-nas.preferred_shares()             # ['Alfred', ...] from the config (may be [])
+nas.preferred_shares()             # ['Docs', ...] from the config (may be [])
 nas.shares()                       # [{'name': 'Photos', 'comment': '...'}, ...] the account can see
 nas.listdir('Photos', '2024/June') # names in a folder ('' = share root)
 nas.scandir('Photos', '2024')      # [(name, is_dir, size), ...]
-nas.exists('Alfred', 'notes/todo.txt')
-nas.read_text('Alfred', 'notes/todo.txt')
+nas.exists('Docs', 'notes/todo.txt')
+nas.read_text('Docs', 'notes/todo.txt')
 nas.read_bytes('Photos', '2024/June/IMG_0001.jpg')
-nas.write_text('Alfred', 'notes/out.txt', 'hello')     # creates folders as needed
-nas.write_bytes('Alfred', 'reports/q3.pdf', data)
-nas.makedirs('Alfred', 'reports/2026')
+nas.write_text('Docs', 'notes/out.txt', 'hello')     # creates folders as needed
+nas.write_bytes('Docs', 'reports/q3.pdf', data)
+nas.makedirs('Docs', 'reports/2026')
 ```
 
 Paths are relative to the share root; `/` or `\` both work; `..` is
@@ -48,7 +48,7 @@ listing) or the usual `OSError` subclasses from `smbclient`
 
 For anything not covered, `nas.unc(share, path)` returns the UNC path and
 the `smbclient` module (smbprotocol) is importable after `import nas`, e.g.
-`smbclient.remove(nas.unc('Alfred', 'tmp/old.txt'))`, `smbclient.rename(...)`,
+`smbclient.remove(nas.unc('Docs', 'tmp/old.txt'))`, `smbclient.rename(...)`,
 `smbclient.stat(...)`.
 
 ## Finding the right share

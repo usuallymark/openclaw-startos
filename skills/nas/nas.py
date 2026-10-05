@@ -7,10 +7,10 @@ Usage:
     nas.shares()                          # shares this NAS account can see
     nas.preferred_shares()                # shares named in Configure External Services
     nas.listdir('Photos', '2024/June')    # names in a folder
-    nas.read_text('Alfred', 'notes/todo.txt')
+    nas.read_text('Docs', 'notes/todo.txt')
     nas.read_bytes('Photos', '2024/June/IMG_0001.jpg')
-    nas.write_text('Alfred', 'notes/out.txt', 'hello')
-    nas.write_bytes('Alfred', 'out/report.pdf', data)
+    nas.write_text('Docs', 'notes/out.txt', 'hello')
+    nas.write_bytes('Docs', 'out/report.pdf', data)
     nas.unc('Photos', '2024/June')        # \\\\host\\Photos\\2024\\June for smbclient.* calls
 
 Paths use forward or back slashes and are relative to the share root.

@@ -31,7 +31,7 @@ MEM_WARN_MB = 256
 
 def load_targets():
     """Targets from our environment, or from the gateway process when run
-    from a plain shell (e.g. Mark's `start-cli package attach`)."""
+    from a plain shell (e.g. a root `start-cli package attach` shell)."""
     raw = os.environ.get(ENV_VAR)
     source = 'environment'
     if not raw:
@@ -110,7 +110,37 @@ def check_vault(_t):
     return False, 'locked (the next credential lookup will try to unlock it; if that fails, check the Vaultwarden settings)'
 
 
-CHECKS = {'http': check_http, 'tcp': check_tcp, 'vault': check_vault}
+def check_memory(_t):
+    # Plain `openclaw memory status` reads the index state without calling the
+    # embedding provider (no cost). It tells whether vector search works.
+    env = {**os.environ, 'HOME': '/data', 'OPENCLAW_STATE_DIR': '/data/.openclaw', 'NO_COLOR': '1'}
+    cmd = ['openclaw', 'memory', 'status', '--agent', 'main']
+    if os.geteuid() == 0:
+        cmd = ['runuser', '-u', 'node', '--', 'env', 'HOME=/data', 'OPENCLAW_STATE_DIR=/data/.openclaw',
+               'NO_COLOR=1'] + cmd
+    try:
+        r = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=90)
+    except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+        return False, f'could not read memory status ({e.__class__.__name__})'
+    out = r.stdout + r.stderr
+    def field(name):
+        for line in out.splitlines():
+            line = line.strip()
+            if line.startswith(name + ':'):
+                return line.split(':', 1)[1].strip()
+        return ''
+    provider, model, vector = field('Provider'), field('Model'), field('Vector search')
+    if r.returncode != 0 and not provider:
+        return False, f'memory status failed: {first_line(out) or f"exit {r.returncode}"}'
+    if provider.startswith('none') or 'requested: none' in provider:
+        return True, 'keyword search only (no embeddings, as configured)'
+    if vector.startswith('paused') or field('Index identity'):
+        return False, (f'vector search paused ({provider}, {model or "?"}): the index was built for another '
+                       'model or without embeddings. Rebuild once: openclaw memory status --index --agent main')
+    return True, f'embeddings via {provider}' + (f', {model}' if model else '')
+
+
+CHECKS = {'http': check_http, 'tcp': check_tcp, 'vault': check_vault, 'memory': check_memory}
 
 
 def run_check(t):
@@ -155,6 +185,8 @@ def main():
                'Run this inside the openclaw container while the service is running.')
         print(json.dumps({'ok': False, 'error': msg}) if as_json else f'health: {msg}', file=sys.stdout if as_json else sys.stderr)
         return 2
+    if shutil.which('openclaw'):
+        targets = targets + [{'key': 'memory', 'label': 'Memory search', 'kind': 'memory'}]
     with ThreadPoolExecutor(max_workers=max(1, len(targets))) as pool:
         results = list(pool.map(run_check, targets))
     results += resources()
@@ -167,7 +199,7 @@ def main():
         print(f"OpenClaw health: {'all OK' if ok else f'{len(down)} problem(s)'} ({report['checked_at']})")
         for r in results:
             print(f"  [{'OK ' if r['ok'] else 'BAD'}] {r['label']}: {r['message']}")
-        print('Service logs and restarts are not visible from here: ask Mark '
+        print('Service logs and restarts are not visible from here: ask the user '
               '(StartOS UI → openclaw, or `sudo start-cli package logs openclaw -l 200` on the Start9).')
     return 0 if ok else 1
 

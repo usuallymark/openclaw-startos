@@ -406,7 +406,7 @@
   }
 
   // While the hidden topic greeting is being answered, hold the composer so
-  // the person's first message lands after Alfred's greeting.
+  // the person's first message lands after the agent's greeting.
   let primingKey = null
   let primingTimer = null
   function startPriming(key) {

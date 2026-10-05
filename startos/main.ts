@@ -21,6 +21,7 @@ import {
   webchatUploadPort,
 } from './utils'
 import { webchatJson } from './fileModels/webchat.json'
+import { embeddingsJson } from './fileModels/embeddings.json'
 import { watchSimplexAddress, withSimplexMounts } from './simplex'
 import { replaceSnapshot } from './memorySnapshot'
 import { requestSimplexPluginUpgrade } from './actions/configureSimplex'
@@ -72,6 +73,19 @@ export const main = sdk.setupMain(async ({ effects }) => {
     if (profile?.type === 'token' && profile.token) {
       providerKeyEnv[varName] = profile.token
     }
+  }
+  // Memory-search embedding key (Configure AI Provider → Memory Embeddings),
+  // used only when that provider is not also a chat provider: one key per
+  // provider, and the chat key wins.
+  const emb = await embeddingsJson.read().const(effects)
+  const embVar =
+    emb?.provider === 'openai'
+      ? 'OPENAI_API_KEY'
+      : emb?.provider === 'google'
+        ? 'GEMINI_API_KEY'
+        : undefined
+  if (embVar && emb?.apiKey && !providerKeyEnv[embVar]) {
+    providerKeyEnv[embVar] = emb.apiKey
   }
 
   // Read external services configuration (reactive — main re-runs on change).

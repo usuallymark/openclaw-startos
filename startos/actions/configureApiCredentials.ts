@@ -3,6 +3,9 @@ import { sdk } from '../sdk'
 import { authProfilesJson, AuthProfile } from '../fileModels/authProfiles.json'
 import { openclawJson } from '../fileModels/openclaw.json'
 import { readDependencyApiKey } from '../utils'
+import { embeddingsJson } from '../fileModels/embeddings.json'
+import { externalServicesJson } from '../fileModels/externalServices.json'
+import { catalog, CloudProvider, pickDefault } from '../modelCatalog'
 import { i18n } from '../i18n'
 
 const { InputSpec, Value, Variants } = sdk
@@ -58,8 +61,13 @@ const depApiBaseUrl = (effects: T.Effects, packageId: string) =>
 // Curated default-model catalogs (exact API model id → label). The chosen model
 // is only the default; it can be changed anytime from Web UI chat with /model,
 // and the Custom Model field below accepts any id not yet listed.
+// Built-in lists are only the fallback: when the form opens, providers with a
+// saved key are asked for their current models (see modelCatalog.ts).
 const ANTHROPIC_MODELS = {
-  'claude-opus-4-8': i18n('Claude Opus 4.8 — most capable'),
+  'claude-opus-5-5': 'Claude Opus 5.5',
+  'claude-sonnet-5-5': 'Claude Sonnet 5.5',
+  'claude-fable-5-1': 'Claude Fable 5.1',
+  'claude-opus-4-8': 'Claude Opus 4.8',
   'claude-opus-4-7': i18n('Claude Opus 4.7'),
   'claude-sonnet-4-6': i18n('Claude Sonnet 4.6 — balanced'),
   'claude-haiku-4-5': i18n('Claude Haiku 4.5 — fast & cheap'),
@@ -81,17 +89,37 @@ const GROK_MODELS = {
 
 // Default-model dropdown + an optional Custom field, so a brand-new id can be
 // used without waiting for a package update. `pickModel` resolves the pair.
-const modelDropdown = <V extends Record<string, string>>(
-  values: V,
-  def: keyof V & string,
+// Configured `provider/model` ids, so the current choice is always selectable.
+async function currentModels(provider: string) {
+  const m = await openclawJson
+    .read((c) => c.agents?.defaults?.model)
+    .once()
+    .catch(() => undefined)
+  return [m?.primary, ...(m?.fallbacks ?? [])]
+    .filter((id): id is string => !!id && id.startsWith(`${provider}/`))
+    .map((id) => id.slice(provider.length + 1))
+}
+
+const modelDropdown = (
+  provider: CloudProvider,
+  builtin: Record<string, string>,
+  def: string,
 ) => ({
-  model: Value.select({
-    name: i18n('Default Model'),
-    description: i18n(
-      'The model this provider uses by default. Change it anytime from Web UI chat with the /model command.',
-    ),
-    default: def,
-    values,
+  model: Value.dynamicSelect(async () => {
+    const values = await catalog(
+      provider,
+      'chat',
+      builtin,
+      await currentModels(provider),
+    )
+    return {
+      name: i18n('Default Model'),
+      description: i18n(
+        'The model this provider uses by default. The list comes live from the provider when its API key is saved (otherwise a built-in list). Change it anytime from Web UI chat with the /model command.',
+      ),
+      default: pickDefault(values, def),
+      values,
+    }
   }),
   customModel: Value.text({
     name: i18n('Custom Model (optional)'),
@@ -122,36 +150,48 @@ const pickModel = (v: { model?: string; customModel?: string | null }) =>
 
 // Prefill a dropdown+custom pair: select a known id, else route an unknown
 // (custom) id to the Custom field. Never returns an API key (keys aren't echoed).
+// The dropdown always includes the configured id (see currentModels).
 const prefillModel = (
-  catalog: Record<string, string>,
+  _builtin: Record<string, string>,
   id: string | undefined,
-) => (id == null ? {} : id in catalog ? { model: id } : { customModel: id })
+) => (id == null ? {} : { model: id })
 
 const providerSpec = (
+  provider: CloudProvider,
   models: Record<string, string>,
   def: string,
   keyPlaceholder: string,
 ) =>
   InputSpec.of({
-    ...modelDropdown(models, def),
+    ...modelDropdown(provider, models, def),
     apiKey: apiKeyField(keyPlaceholder),
   })
 
 const anthropic = {
   name: i18n('Anthropic (Claude)'),
-  spec: providerSpec(ANTHROPIC_MODELS, 'claude-opus-4-8', 'sk-ant-...'),
+  spec: providerSpec(
+    'anthropic',
+    ANTHROPIC_MODELS,
+    'claude-opus-5-5',
+    'sk-ant-...',
+  ),
 }
 const openai = {
   name: i18n('OpenAI (GPT)'),
-  spec: providerSpec(OPENAI_MODELS, 'gpt-5.5', 'sk-...'),
+  spec: providerSpec('openai', OPENAI_MODELS, 'gpt-5.5', 'sk-...'),
 }
 const google = {
   name: i18n('Google (Gemini)'),
-  spec: providerSpec(GEMINI_MODELS, 'gemini-3.1-pro-preview', 'AIza...'),
+  spec: providerSpec(
+    'google',
+    GEMINI_MODELS,
+    'gemini-3.1-pro-preview',
+    'AIza...',
+  ),
 }
 const xai = {
   name: i18n('xAI (Grok)'),
-  spec: providerSpec(GROK_MODELS, 'grok-4.3', 'xai-...'),
+  spec: providerSpec('xai', GROK_MODELS, 'grok-4.3', 'xai-...'),
 }
 
 // Local backends take a single served-model field; baseUrl (and vLLM's key) are
@@ -198,6 +238,131 @@ const fallbackVariants = Variants.of({
   ...allVariants,
 })
 
+// ── Memory embeddings (OpenClaw memory search) ─────────────────────────────
+// Independent of the chat provider. Writes openclaw.json `memory.search`.
+// Qdrant collections are NOT affected: each keeps the model it was built with.
+
+const EMBED_OPENAI = {
+  'text-embedding-3-small': 'text-embedding-3-small',
+  'text-embedding-3-large': 'text-embedding-3-large',
+}
+const EMBED_GOOGLE = {
+  'gemini-embedding-001': 'gemini-embedding-001',
+}
+// Custom models.providers id for an Ollama embedding server, so it does not
+// collide with an Ollama chat backend.
+const OLLAMA_EMBED_ID = 'ollama-embed'
+
+const embedKeyField = (placeholder: string) =>
+  Value.text({
+    name: i18n('API Key'),
+    description: i18n(
+      'Only needed if this provider is not also your chat provider above (then its chat key is used). Leave blank to keep the key already saved.',
+    ),
+    required: false,
+    default: null,
+    masked: true,
+    placeholder,
+  })
+
+const embedModelDropdown = (
+  provider: CloudProvider,
+  builtin: Record<string, string>,
+  def: string,
+) =>
+  Value.dynamicSelect(async ({ effects }) => {
+    const cur = await openclawJson
+      .read((c) => c.memory?.search?.model)
+      .once()
+      .catch(() => undefined)
+    const values = await catalog(provider, 'embed', builtin, [cur ?? undefined])
+    return {
+      name: i18n('Embedding Model'),
+      description: i18n(
+        'Listed live from the provider when a key for it is saved; otherwise a built-in list.',
+      ),
+      default: pickDefault(values, def),
+      values,
+    }
+  })
+
+const embeddingVariants = Variants.of({
+  none: {
+    name: i18n('Keyword search only (no embeddings)'),
+    spec: InputSpec.of({}),
+  },
+  openai: {
+    name: 'OpenAI',
+    spec: InputSpec.of({
+      model: embedModelDropdown(
+        'openai',
+        EMBED_OPENAI,
+        'text-embedding-3-small',
+      ),
+      apiKey: embedKeyField('sk-...'),
+    }),
+  },
+  google: {
+    name: i18n('Google (Gemini)'),
+    spec: InputSpec.of({
+      model: embedModelDropdown('google', EMBED_GOOGLE, 'gemini-embedding-001'),
+      apiKey: embedKeyField('AIza...'),
+    }),
+  },
+  ollama: {
+    name: i18n('Ollama (your own server)'),
+    spec: InputSpec.of({
+      url: Value.text({
+        name: i18n('Ollama URL'),
+        description: i18n(
+          'Base URL of your Ollama server, without /v1 (e.g. http://192.168.1.50:11434). Defaults to the Ollama URL from Configure External Services. A ".local" name needs a Custom Host Mapping there.',
+        ),
+        required: true,
+        default: null,
+        placeholder: 'http://ollama-host:11434',
+      }),
+      model: Value.text({
+        name: i18n('Embedding Model'),
+        description: i18n(
+          'An embedding model your Ollama server has pulled, e.g. nomic-embed-text.',
+        ),
+        required: true,
+        default: 'nomic-embed-text',
+        placeholder: 'nomic-embed-text',
+      }),
+    }),
+  },
+  'openai-compatible': {
+    name: i18n('Other OpenAI-compatible server'),
+    spec: InputSpec.of({
+      url: Value.text({
+        name: i18n('Base URL'),
+        description: i18n(
+          'Base URL of the /v1/embeddings API, e.g. https://api.example.com/v1/',
+        ),
+        required: true,
+        default: null,
+        placeholder: 'https://api.example.com/v1/',
+      }),
+      model: Value.text({
+        name: i18n('Embedding Model'),
+        description: null,
+        required: true,
+        default: null,
+        placeholder: 'text-embedding-3-small',
+      }),
+      apiKey: Value.text({
+        name: i18n('API Key'),
+        description: i18n('Leave blank to keep the key already saved.'),
+        required: false,
+        default: null,
+        masked: true,
+        placeholder: null,
+      }),
+    }),
+  },
+})
+
 const inputSpec = InputSpec.of({
   primary: Value.union({
     name: i18n('Primary Provider'),
@@ -214,6 +379,14 @@ const inputSpec = InputSpec.of({
     ),
     default: 'disabled',
     variants: fallbackVariants,
+  }),
+  embeddings: Value.union({
+    name: i18n('Memory Embeddings'),
+    description: i18n(
+      "How OpenClaw's memory search (MEMORY.md, memory files, past sessions) finds related notes. Independent of the chat provider above.\n\nChanging it makes OpenClaw rebuild its memory index once (with a paid API this costs a little). Vector collections in Qdrant are NOT changed: each keeps the embedding model it was built with.",
+    ),
+    default: 'none',
+    variants: embeddingVariants,
   }),
 })
 
@@ -267,11 +440,156 @@ function prefillProvider(id: string | undefined) {
   }
 }
 
+// Reconstruct the Memory Embeddings choice from openclaw.json. Unset means
+// OpenClaw's own default (OpenAI); show it as such only when an OpenAI key is
+// saved, otherwise as keyword-only, which is what an unset config does then.
+async function prefillEmbeddings() {
+  const cfg = await openclawJson
+    .read()
+    .once()
+    .catch(() => undefined)
+  const s = cfg?.memory?.search
+  switch (s?.provider) {
+    case 'none':
+      return { selection: 'none' as const, value: {} }
+    case 'openai':
+      return { selection: 'openai' as const, value: { model: s.model } }
+    case 'gemini':
+      return { selection: 'google' as const, value: { model: s.model } }
+    case OLLAMA_EMBED_ID: {
+      const ext = await externalServicesJson
+        .read()
+        .once()
+        .catch(() => undefined)
+      return {
+        selection: 'ollama' as const,
+        value: {
+          url:
+            cfg?.models?.providers?.[OLLAMA_EMBED_ID]?.baseUrl ??
+            ext?.ollama?.url ??
+            undefined,
+          model: s.model ?? 'nomic-embed-text',
+        },
+      }
+    }
+    case 'openai-compatible':
+      return {
+        selection: 'openai-compatible' as const,
+        value: { url: s.remote?.baseUrl, model: s.model },
+      }
+  }
+  const profiles =
+    (await authProfilesJson
+      .read((p) => p.profiles)
+      .once()
+      .catch(() => undefined)) ?? {}
+  return profiles['openai:default']
+    ? {
+        selection: 'openai' as const,
+        value: { model: 'text-embedding-3-small' },
+      }
+    : { selection: 'none' as const, value: {} }
+}
+
 // --- Save helper ---
 
 type ProviderUnion = {
   selection: string
   value: { model?: string; customModel?: string | null; apiKey?: string | null }
+}
+
+type EmbeddingUnion = {
+  selection: string
+  value: { model?: string; url?: string | null; apiKey?: string | null }
+}
+
+// OpenClaw's memory-search provider id per form choice.
+const EMBED_PROVIDER_ID: Record<string, string> = {
+  none: 'none',
+  openai: 'openai',
+  google: 'gemini',
+  ollama: OLLAMA_EMBED_ID,
+  'openai-compatible': 'openai-compatible',
+}
+
+/**
+ * Apply the Memory Embeddings choice: package-private key storage plus
+ * openclaw.json `memory.search` (and a dedicated provider entry for Ollama).
+ * Returns true when a cloud provider was chosen without any API key; it is
+ * then saved as keyword-only.
+ */
+export async function applyEmbeddings(
+  effects: T.Effects,
+  emb: EmbeddingUnion,
+  profiles: Record<string, AuthProfile>,
+): Promise<boolean> {
+  const sel = emb.selection
+  const prevEmb = await embeddingsJson
+    .read()
+    .once()
+    .catch(() => undefined)
+  const cfg = (await openclawJson.read().once()) as any
+  const prevSearch = (cfg?.memory?.search ?? {}) as Record<string, unknown>
+  const { provider: _p, model: _m, remote: _r, ...keepSearch } = prevSearch
+  const search: Record<string, unknown> = {
+    ...keepSearch,
+    provider: EMBED_PROVIDER_ID[sel] ?? 'none',
+  }
+  let keyMissing = false
+
+  if (sel === 'openai' || sel === 'google') {
+    // Bridged to OPENAI_API_KEY / GEMINI_API_KEY by main.ts, only when the
+    // provider has no chat key (one key per provider; the chat key wins).
+    const typed = (emb.value.apiKey ?? '').trim()
+    const kept = prevEmb?.provider === sel ? prevEmb.apiKey : undefined
+    const apiKey = typed || kept
+    await embeddingsJson.write(effects, { provider: sel, apiKey })
+    keyMissing = !apiKey && !profiles[`${sel}:default`]
+    if (keyMissing) {
+      // OpenClaw fails closed for a named cloud provider without a key
+      // (memory search would report "unavailable"); keyword-only instead.
+      search.provider = 'none'
+    } else {
+      search.model = emb.value.model
+    }
+  } else if (sel === 'openai-compatible') {
+    const prevRemote = (prevSearch.remote ?? {}) as { apiKey?: string }
+    const apiKey = (emb.value.apiKey ?? '').trim() || prevRemote.apiKey
+    search.model = (emb.value.model ?? '').trim()
+    search.remote = {
+      baseUrl: (emb.value.url ?? '').trim(),
+      ...(apiKey ? { apiKey } : {}),
+    }
+    await embeddingsJson.write(effects, { provider: sel })
+  } else {
+    await embeddingsJson.write(effects, { provider: sel })
+    if (sel === 'ollama') search.model = (emb.value.model ?? '').trim()
+  }
+
+  const models = { mode: 'merge', ...(cfg?.models ?? {}) }
+  if (sel === 'ollama') {
+    // A dedicated provider entry, so an Ollama chat backend is untouched.
+    const base = (emb.value.url ?? '')
+      .trim()
+      .replace(/\/+$/, '')
+      .replace(/\/v1$/, '')
+    const model = String(search.model)
+    models.providers = {
+      ...(models.providers ?? {}),
+      [OLLAMA_EMBED_ID]: {
+        api: 'ollama',
+        baseUrl: base,
+        apiKey: 'ollama-local',
+        models: [{ id: model, name: model }],
+      },
+    }
+  }
+  await openclawJson.write(effects, {
+    ...cfg,
+    models,
+    memory: { ...(cfg?.memory ?? {}), search },
+  })
+  return keyMissing
 }
 
 // --- Action ---
@@ -309,6 +627,7 @@ export const configureApiCredentials = sdk.Action.withInput(
         selection: 'disabled' as const,
         value: {},
       },
+      embeddings: await prefillEmbeddings(),
     }
   },
 
@@ -409,8 +728,27 @@ export const configureApiCredentials = sdk.Action.withInput(
       },
     })
 
+    const keyMissing = await applyEmbeddings(
+      effects,
+      input.embeddings as EmbeddingUnion,
+      profiles,
+    )
+
     // setupDependencies reads the model selection reactively, so writing the
     // config above already updates the local-backend dependency — just restart.
     await effects.restart()
+
+    return {
+      version: '1' as const,
+      title: i18n('AI provider saved'),
+      message: keyMissing
+        ? i18n(
+            'Saved. Memory embeddings: no API key is saved for this provider, so memory search falls back to keywords until you add one or choose another option.',
+          )
+        : i18n(
+            'Saved. OpenClaw restarts now. If you changed Memory Embeddings, its memory index is rebuilt once; the health skill (or `openclaw memory status`) shows when vector search is ready.',
+          ),
+      result: null,
+    }
   },
 )

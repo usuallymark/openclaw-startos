@@ -114,6 +114,21 @@ const pluginsSchema = z.object({
     .catch(undefined),
 })
 
+// Memory-search embeddings (openclaw.json `memory.search`). Only the keys the
+// Configure AI Provider action manages; other memory settings pass through
+// untouched (FileHelper.json parses deep-loose).
+const memorySearchSchema = z.object({
+  provider: z.string().optional().catch(undefined),
+  model: z.string().optional().catch(undefined),
+  remote: z
+    .object({
+      baseUrl: z.string().optional().catch(undefined),
+      apiKey: z.string().optional().catch(undefined),
+    })
+    .optional()
+    .catch(undefined),
+})
+
 const shape = z.object({
   gateway: gatewaySchema.catch(() => gatewaySchema.parse({})),
   agents: z
@@ -133,6 +148,10 @@ const shape = z.object({
     .optional()
     .catch(undefined),
   plugins: pluginsSchema.optional().catch(undefined),
+  memory: z
+    .object({ search: memorySearchSchema.optional().catch(undefined) })
+    .optional()
+    .catch(undefined),
 })
 
 export const openclawJson = FileHelper.json(

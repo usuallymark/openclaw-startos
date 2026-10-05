@@ -7,8 +7,9 @@ description: "Use this skill for local AI model operations: generating embedding
 
 ## Purpose
 
-Ollama runs large language models locally on your hardware. OpenClaw uses
-it for embeddings (nomic-embed-text) and vision analysis (llama3.2-vision).
+Ollama runs models on the user's own hardware: embeddings, vision analysis
+and local language models. Which models are installed is up to the user;
+check with the list below before assuming one exists.
 
 ## Connection
 
@@ -21,7 +22,8 @@ if not OLLAMA_URL:
 
 ## Generate Embeddings
 
-Used to create vectors for Qdrant storage and search:
+For Qdrant collections use the qdrant skill instead: it picks the model each
+collection was built with. Direct use, e.g. to compare two texts:
 
 ```python
 import json, urllib.request, os
@@ -88,7 +90,8 @@ models = [m['name'] for m in json.loads(resp.read()).get('models', [])]
 print(models)
 ```
 
-## Standard Models
+## Common Models
 
-- `nomic-embed-text:latest` — 137M embeddings model, fast
+Examples only; use what `/api/tags` lists:
+- `nomic-embed-text` — small, fast embedding model
 - `llama3.2-vision:11b` — vision/image analysis

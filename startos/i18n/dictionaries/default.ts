@@ -153,6 +153,26 @@ const dict = {
   'Qdrant Vector Database': 118,
   'Qdrant is ready': 119,
   'Qdrant is not ready': 120,
+
+  // actions/configureApiCredentials.ts — live model lists, memory embeddings
+  'The model this provider uses by default. The list comes live from the provider when its API key is saved (otherwise a built-in list). Change it anytime from Web UI chat with the /model command.': 121,
+  'Embedding Model': 122,
+  'Listed live from the provider when a key for it is saved; otherwise a built-in list.': 123,
+  'Only needed if this provider is not also your chat provider above (then its chat key is used). Leave blank to keep the key already saved.': 124,
+  'Keyword search only (no embeddings)': 125,
+  'Ollama (your own server)': 126,
+  'Ollama URL': 127,
+  'Base URL of your Ollama server, without /v1 (e.g. http://192.168.1.50:11434). Defaults to the Ollama URL from Configure External Services. A ".local" name needs a Custom Host Mapping there.': 128,
+  'An embedding model your Ollama server has pulled, e.g. nomic-embed-text.': 129,
+  'Other OpenAI-compatible server': 130,
+  'Base URL': 131,
+  'Base URL of the /v1/embeddings API, e.g. https://api.example.com/v1/': 132,
+  'Leave blank to keep the key already saved.': 133,
+  'Memory Embeddings': 134,
+  "How OpenClaw's memory search (MEMORY.md, memory files, past sessions) finds related notes. Independent of the chat provider above.\n\nChanging it makes OpenClaw rebuild its memory index once (with a paid API this costs a little). Vector collections in Qdrant are NOT changed: each keeps the embedding model it was built with.": 135,
+  'Saved. Memory embeddings: no API key is saved for this provider, so memory search falls back to keywords until you add one or choose another option.': 136,
+  'Saved. OpenClaw restarts now. If you changed Memory Embeddings, its memory index is rebuilt once; the health skill (or `openclaw memory status`) shows when vector search is ready.': 137,
+  'AI provider saved': 138,
 } as const
 
 /**

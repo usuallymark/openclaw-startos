@@ -1,100 +1,73 @@
 ---
 name: qdrant
-description: "Use this skill for all vector database operations: storing embeddings, semantic search, memory retrieval, and collection management. Triggers: any time you need to remember something long-term, search memory, or work with embeddings."
+description: "Use this skill for vector database work in Qdrant: semantic search over a knowledge collection, storing new knowledge, creating or listing collections. Triggers: search a library or knowledge base, remember something long-term in a collection, ingest documents, anything about embeddings or Qdrant."
 ---
 
 # Qdrant — Vector Database
 
-## Purpose
+Qdrant runs inside this OpenClaw package (internal only, no API key). Use
+the helper below; it knows the address (`QDRANT_URL`).
 
-Qdrant is the vector database that powers OpenClaw's long-term memory,
-semantic search, and knowledge retrieval. All persistent memory and
-knowledge library operations go through Qdrant.
+## The one rule: a collection keeps its embedding model
 
-## Connection
+Every collection was built with one embedding model. Search it, and add
+to it, only with that same model. A different model's vectors are useless
+there: a different vector size is rejected, and the same size silently
+returns nonsense. Changing Memory Embeddings in Configure AI Provider does
+**not** change existing collections.
 
-Qdrant runs as a companion service inside the same OpenClaw package.
-The URL is provided via environment variable:
+The helper records each collection's model and uses it automatically.
 
-```python
-import os
-QDRANT_URL = os.environ.get('QDRANT_URL', 'http://localhost:6333')
-```
-
-## Common Operations
-
-### Search (semantic similarity)
+## Use it
 
 ```python
-import json, urllib.request, os
+import sys; sys.path.insert(0, '/opt/skills/qdrant')
+import qdrant
 
-QDRANT_URL = os.environ.get('QDRANT_URL', 'http://localhost:6333')
+qdrant.collections()          # [{'name', 'size', 'points', 'model'}, ...]
+hits = qdrant.search('notes', 'what did we decide about backups?', limit=5)
+for h in hits:
+    print(h['score'], h['payload'].get('text', '')[:200])
 
-def qdrant_search(collection, vector, limit=5):
-    body = json.dumps({'vector': vector, 'limit': limit, 'with_payload': True}).encode()
-    req = urllib.request.Request(
-        f'{QDRANT_URL}/collections/{collection}/points/search',
-        data=body,
-        headers={'Content-Type': 'application/json'},
-        method='POST'
-    )
-    resp = urllib.request.urlopen(req, timeout=10)
-    return json.loads(resp.read())['result']
+qdrant.upsert('notes', [
+    {'text': 'Backups run nightly at 2am.', 'payload': {'source': 'chat', 'date': '2026-10-05'}},
+])
+qdrant.create('new-collection')   # uses the Memory Embeddings model
 ```
 
-### Upsert (store a point)
+Shell:
 
-```python
-def qdrant_upsert(collection, point_id, vector, payload):
-    body = json.dumps({
-        'points': [{'id': point_id, 'vector': vector, 'payload': payload}]
-    }).encode()
-    req = urllib.request.Request(
-        f'{QDRANT_URL}/collections/{collection}/points',
-        data=body,
-        headers={'Content-Type': 'application/json'},
-        method='PUT'
-    )
-    urllib.request.urlopen(req, timeout=10)
+```bash
+python3 /opt/skills/qdrant/qdrant.py list
+python3 /opt/skills/qdrant/qdrant.py search notes "what did we decide about backups?" --limit 5
+python3 /opt/skills/qdrant/qdrant.py create new-collection
 ```
 
-### List collections
+- `upsert` stores the original text in the payload (`text`). Keep it that
+  way: it is what makes a collection re-embeddable with another model later.
+- Filters: `qdrant.search(name, text, query_filter={'must': [{'key': 'source', 'match': {'value': 'chat'}}]})`.
 
-```python
-req = urllib.request.Request(f'{QDRANT_URL}/collections')
-resp = urllib.request.urlopen(req, timeout=5)
-collections = [c['name'] for c in json.loads(resp.read())['result']['collections']]
-print(collections)
+## A collection with no recorded model
+
+`list` shows `model=NOT RECORDED` and search refuses it. Find out which
+model built it (workspace notes, the ingest script), then record it once:
+
+```bash
+python3 /opt/skills/qdrant/qdrant.py set-model COLLECTION ollama nomic-embed-text
 ```
 
-## Standard Collections
+`set-model` embeds a test string and refuses the model if the vector size
+does not match the collection. (A same-size wrong model cannot be detected
+this way: be sure of the model before recording it.) Providers: `ollama`,
+`openai`, `gemini`; keys and the Ollama address come from Configure AI
+Provider / Configure External Services.
 
-Collections used by OpenClaw agents:
-- `alfred-memory` — Alfred's general long-term memory
-- `mara-voice-corpus` — Mara's voice and writing samples
-- `mara-voice-feedback` — Feedback on Mara's voice
-- `mara-lmt-library` — Licensed massage therapy library
-- `mara-social-posts` — Social media post archive
-- `mara-health-insurance` — Health insurance documents
-- `mara-business` — Business intelligence data
-- `canva-docs` — Canva documentation and guides
-- `rawtherapee` — RawTherapee photo editing guides
+## Don't
 
-## Generating Embeddings
-
-Use Ollama's nomic-embed-text model to generate vectors:
-
-```python
-OLLAMA_URL = os.environ.get('OLLAMA_URL', 'http://localhost:11434')
-
-def embed(text):
-    body = json.dumps({'model': 'nomic-embed-text', 'input': text}).encode()
-    req = urllib.request.Request(
-        f'{OLLAMA_URL}/api/embed',
-        data=body,
-        headers={'Content-Type': 'application/json'},
-        method='POST'
-    )
-    resp = urllib.request.urlopen(req, timeout=30)
-    return json.loads(resp.read())['embeddings'][0]
-```
+- Don't embed with a different model "just this once" and don't create
+  vectors by hand for an existing collection; use the helper.
+- Don't delete or recreate a collection to change its model. Moving a
+  collection to a new model is a deliberate re-embed into a new
+  collection; ask the user first.
+- Collection names and what they hold are the user's business: keep notes
+  about them in the workspace, not in package skills.

@@ -41,7 +41,7 @@ const credentialUnion = (
     variants: credentialVariants(entryName, fieldName),
   })
 
-// "Alfred, Photos ,,x" -> "Alfred, Photos, x"; blank -> undefined.
+// "Docs, Photos ,,x" -> "Docs, Photos, x"; blank -> undefined.
 const normalizeShares = (raw: unknown): string | undefined => {
   const list = String(raw ?? '')
     .split(',')
@@ -112,8 +112,8 @@ const ollamaService = Value.union({
       spec: InputSpec.of({
         url: urlField(
           'Ollama URL',
-          'The HTTP URL of your Ollama server, e.g. http://192.168.0.101:11434. Must be reachable from this server on your local network.',
-          'http://192.168.0.x:11434',
+          'The HTTP URL of your Ollama server, e.g. http://192.168.1.50:11434. Must be reachable from this server on your local network.',
+          'http://192.168.1.x:11434',
         ),
       }),
     },
@@ -132,17 +132,17 @@ const nasService = Value.union({
       spec: InputSpec.of({
         host: urlField(
           'NAS Host',
-          'IP address or hostname of your NAS, e.g. 192.168.0.16',
-          '192.168.0.x',
+          'IP address or hostname of your NAS, e.g. 192.168.1.20',
+          '192.168.1.x',
         ),
         share: Value.text({
           name: 'Preferred Shares (optional)',
           description:
-            'Comma-separated SMB share names the agent should look in first, e.g. "Alfred, Photos". Leave blank to let the agent pick. This is a hint, not a restriction: the agent can use every share the NAS account below is allowed to open. To limit access, give that account permissions only on the shares it should use.',
+            'Comma-separated SMB share names the agent should look in first, e.g. "Docs, Photos". Leave blank to let the agent pick. This is a hint, not a restriction: the agent can use every share the NAS account below is allowed to open. To limit access, give that account permissions only on the shares it should use.',
           required: false,
           default: null,
           masked: false,
-          placeholder: 'Alfred, Photos',
+          placeholder: 'Docs, Photos',
         }),
         username: credentialUnion(
           'Username',
@@ -359,7 +359,7 @@ const hostMappings = Value.list(
           description: 'The LAN IP address of that host, e.g. 192.168.1.50',
           required: true,
           default: null,
-          placeholder: '192.168.0.x',
+          placeholder: '192.168.1.x',
           patterns: [
             {
               regex:
