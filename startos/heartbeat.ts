@@ -7,4 +7,6 @@ export const HEARTBEAT_PROMPT = `Refresh the 3 most dynamic subsections of the S
 
 Update the timestamp line to \`_Captured at heartbeat: <current timestamp>_\`.
 
+Change no other file, and do not commit, push or run any git command: this turn only refreshes MEMORY.md on disk.
+
 Follow the heartbeat monitor scratch context when provided. When done, reply NO_REPLY.`

@@ -71,8 +71,8 @@ const depApiBaseUrl = (effects: T.Effects, packageId: string) =>
 // Built-in lists are only the fallback: when the form opens, providers with a
 // saved key are asked for their current models (see modelCatalog.ts).
 export const ANTHROPIC_MODELS = {
-  'claude-opus-5-5': 'Claude Opus 5.5',
-  'claude-sonnet-5-5': 'Claude Sonnet 5.5',
+  // No Opus/Sonnet 5.5: the bundled OpenClaw can't drive them yet (see
+  // UNSUPPORTED in modelCatalog.ts).
   'claude-fable-5-1': 'Claude Fable 5.1',
   'claude-opus-4-8': 'Claude Opus 4.8',
   'claude-opus-4-7': i18n('Claude Opus 4.7'),
@@ -179,7 +179,7 @@ const anthropic = {
   spec: providerSpec(
     'anthropic',
     ANTHROPIC_MODELS,
-    'claude-opus-5-5',
+    'claude-opus-4-8',
     'sk-ant-...',
   ),
 }

@@ -1,13 +1,14 @@
 import { IMPOSSIBLE, VersionInfo } from '@start9labs/start-sdk'
 
 export const current = VersionInfo.of({
-  version: '2026.9.4:18',
+  version: '2026.9.4:19',
   releaseNotes: {
-    en_US: `Agents in the UI, and local chat models for them.
+    en_US: `Hide the models this OpenClaw version can't use yet.
 
-- New action "Configure Agents": a list of the helper agents the main agent can spawn, with Add and Delete. For each: model, tool profile, extra and blocked tools, skills, which other agents it may spawn, whether the main agent may spawn it, and its instructions folder (a starter AGENTS.md is created). It is filled from OpenClaw's own config every time it opens, and saving changes only what you edited, through OpenClaw's validated writer. No restart needed.
-- The main agent can now create and change agents in conversation with the new agents skill, using the same rules; they appear in Configure Agents. It cannot switch on the coding or full profiles, shell or system tools, or change the main agent: those are left to you in Configure Agents.
-- Configure AI Provider: new "Local Chat Models for Agents" option. Point it at your own Ollama server and its tool-capable models (embedding-only and tool-less models are left out) become choices in Configure Agents, so helper agents can run locally at no API cost. Models you pull later appear without saving again.`,
+- Claude Opus 5.5 and Sonnet 5.5 (and GPT-6) are no longer offered in Configure AI Provider, Configure Agents or the agents skill. The bundled OpenClaw (2026.9.4) predates them, and every request to them was rejected by the provider (HTTP 400). They will return when the package moves to a newer OpenClaw.
+- The default Anthropic model is now Claude Opus 4.8 (it was Opus 5.5, which would have failed on every turn).
+- A model already configured stays selectable and is marked "not supported by this OpenClaw version", so opening a form never changes it silently.
+- The daily heartbeat prompt now says to change no other file and not to commit, push or run git: it refreshes MEMORY.md on disk only (MEMORY.md is kept out of git on purpose; a heartbeat turn had committed and pushed it).`,
   },
   migrations: {
     up: async () => {},

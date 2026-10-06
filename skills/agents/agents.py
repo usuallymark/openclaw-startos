@@ -64,6 +64,18 @@ POWERFUL_TOOLS = {
     'group:plugins', 'group:messaging',
 }
 ALWAYS_BLOCKED = ('gateway', 'cron')
+# Models the provider offers but this OpenClaw (2026.9.4) predates and
+# cannot drive (requests fail with HTTP 400). Keep in sync with
+# startos/modelCatalog.ts UNSUPPORTED; empty it after an OpenClaw upgrade.
+UNSUPPORTED = {
+    'anthropic': re.compile(r'^claude-(?:opus|sonnet)-5-5(?![0-9])'),
+    'openai': re.compile(r'^gpt-6(?![0-9])'),
+}
+
+
+def unsupported(provider, mid):
+    rx = UNSUPPORTED.get(provider)
+    return bool(rx and rx.match(mid))
 
 FIELDS = ('name', 'model', 'profile', 'extraTools', 'blockedTools', 'skills',
           'canSpawn', 'mainCanSpawn', 'workspace')
@@ -210,7 +222,8 @@ def model_choices(cfg):
         if not _gateway_env(env):
             continue
         for mid, label in (cache.get(p) or {}).get('chat', []):
-            out.append((f'{p}/{mid}', label))
+            if not unsupported(p, mid):
+                out.append((f'{p}/{mid}', label))
         # The main agent's current model is always a valid choice.
     dm = ((cfg.get('agents') or {}).get('defaults') or {}).get('model') or {}
     for ref in [dm.get('primary'), *(dm.get('fallbacks') or [])]:
@@ -257,6 +270,9 @@ def check_model(cfg, ref, ui, patch):
             slot['models'].append(local_entry(mid, info))
         return ref
     if provider in CLOUD_ENV:
+        if unsupported(provider, mid):
+            raise AgentError(f'{ref} is not supported by this OpenClaw version yet (its requests are rejected); '
+                             f'pick another model (see: agents.py models)')
         if not ui and not _gateway_env(CLOUD_ENV[provider]):
             raise AgentError(f'No API key for {provider} is configured (Configure AI Provider). See: agents.py models')
         return ref

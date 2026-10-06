@@ -212,6 +212,23 @@ function live(p: CloudProvider): Promise<Lists | null> {
 }
 
 /**
+ * Models the provider lists but the bundled OpenClaw cannot drive yet: it
+ * predates them and builds a request they reject (HTTP 400). OpenClaw
+ * 2026.9.4 has no Claude Opus/Sonnet 5.5 (added upstream in 2026.9.6 and
+ * 2026.9.7) and no GPT-6. They are left out of every dropdown; a model
+ * already configured stays selectable, marked. Empty this when the package
+ * moves to an OpenClaw that supports them. Keep in sync with
+ * skills/agents/agents.py UNSUPPORTED.
+ */
+const UNSUPPORTED: Partial<Record<CloudProvider, RegExp>> = {
+  anthropic: /^claude-(?:opus|sonnet)-5-5(?![0-9])/,
+  openai: /^gpt-6(?![0-9])/,
+}
+
+export const isUnsupported = (p: CloudProvider, id: string) =>
+  !!UNSUPPORTED[p]?.test(id)
+
+/**
  * Dropdown values for one provider and kind: live first, then cached, then the
  * built-in list, then any currently configured ids. Never empty.
  */
@@ -223,14 +240,21 @@ export async function catalog(
 ): Promise<Record<string, string>> {
   const out: Record<string, string> = {}
   const add = (id: string | undefined, label: string) => {
-    if (id && !(id in out)) out[id] = label
+    if (id && !(id in out) && !isUnsupported(p, id)) out[id] = label
   }
   const fresh = await live(p)
   for (const [id, label] of fresh?.[kind] ?? []) add(id, label)
   const cached = (await readCache())[p]
   for (const [id, label] of cached?.[kind] ?? []) add(id, label)
   for (const [id, label] of Object.entries(builtin)) add(id, label)
-  for (const id of current) add(id, `${id} (current)`)
+  // Configured ids always stay selectable (marked when unsupported).
+  for (const id of current) {
+    if (id && !(id in out)) {
+      out[id] = isUnsupported(p, id)
+        ? `${id} (current; not supported by this OpenClaw version)`
+        : `${id} (current)`
+    }
+  }
   return out
 }
 
@@ -404,7 +428,14 @@ export async function agentModelChoices(
         add(`${OLLAMA_SERVER_ID}/${m.id}`, `Local · ${m.id}`)
     }
   }
-  for (const id of current) add(id, `${id} (current)`)
+  for (const id of current) {
+    if (id && !(id in out)) {
+      const [prov, ...rest] = id.split('/')
+      out[id] = isUnsupported(prov as CloudProvider, rest.join('/'))
+        ? `${id} (current; not supported by this OpenClaw version)`
+        : `${id} (current)`
+    }
+  }
   return out
 }
 
