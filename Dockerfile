@@ -84,6 +84,7 @@ COPY skills/rbw/getcred /usr/local/bin/getcred
 RUN chmod 755 /usr/local/bin/getcred
 COPY skills/qdrant/SKILL.md skills/qdrant/qdrant.py /opt/skills/qdrant/
 COPY skills/health/SKILL.md skills/health/health.py /opt/skills/health/
+COPY skills/agents/SKILL.md skills/agents/agents.py /opt/skills/agents/
 COPY skills/ollama/SKILL.md /opt/skills/ollama/SKILL.md
 COPY skills/nas/SKILL.md skills/nas/nas.py /opt/skills/nas/
 COPY skills/n8n/SKILL.md /opt/skills/n8n/SKILL.md

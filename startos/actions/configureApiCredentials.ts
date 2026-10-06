@@ -5,7 +5,14 @@ import { openclawJson } from '../fileModels/openclaw.json'
 import { readDependencyApiKey } from '../utils'
 import { embeddingsJson } from '../fileModels/embeddings.json'
 import { externalServicesJson } from '../fileModels/externalServices.json'
-import { catalog, CloudProvider, pickDefault } from '../modelCatalog'
+import {
+  catalog,
+  CloudProvider,
+  localModelEntry,
+  OLLAMA_SERVER_ID,
+  ollamaServerModels,
+  pickDefault,
+} from '../modelCatalog'
 import { i18n } from '../i18n'
 
 const { InputSpec, Value, Variants } = sdk
@@ -63,7 +70,7 @@ const depApiBaseUrl = (effects: T.Effects, packageId: string) =>
 // and the Custom Model field below accepts any id not yet listed.
 // Built-in lists are only the fallback: when the form opens, providers with a
 // saved key are asked for their current models (see modelCatalog.ts).
-const ANTHROPIC_MODELS = {
+export const ANTHROPIC_MODELS = {
   'claude-opus-5-5': 'Claude Opus 5.5',
   'claude-sonnet-5-5': 'Claude Sonnet 5.5',
   'claude-fable-5-1': 'Claude Fable 5.1',
@@ -73,16 +80,16 @@ const ANTHROPIC_MODELS = {
   'claude-haiku-4-5': i18n('Claude Haiku 4.5 — fast & cheap'),
   'claude-fable-5': i18n('Claude Fable 5 — premium'),
 }
-const OPENAI_MODELS = {
+export const OPENAI_MODELS = {
   'gpt-5.5': i18n('GPT-5.5 — strongest'),
   'gpt-5.4': i18n('GPT-5.4'),
   'gpt-5.4-mini': i18n('GPT-5.4 Mini — fast & cheap'),
 }
-const GEMINI_MODELS = {
+export const GEMINI_MODELS = {
   'gemini-3.1-pro-preview': i18n('Gemini 3.1 Pro'),
   'gemini-3-flash-preview': i18n('Gemini 3 Flash — fast'),
 }
-const GROK_MODELS = {
+export const GROK_MODELS = {
   'grok-4.3': i18n('Grok 4.3 — flagship'),
   'grok-build-0.1': i18n('Grok Build 0.1 — agentic coding'),
 }
@@ -363,6 +370,30 @@ const embeddingVariants = Variants.of({
   },
 })
 
+// ── Local chat models (the user's own Ollama server) ───────────────────────
+// Adds a `models.providers.ollama-server` entry listing the server's
+// tool-capable models, so agents (Configure Agents) can run on them.
+// Separate from the "Ollama (local)" chat backend above, which is the
+// StartOS Ollama package.
+
+const localModelsVariants = Variants.of({
+  disabled: { name: i18n('Off'), spec: InputSpec.of({}) },
+  ollama: {
+    name: i18n('Ollama (your own server)'),
+    spec: InputSpec.of({
+      url: Value.text({
+        name: i18n('Ollama URL'),
+        description: i18n(
+          'Base URL of your Ollama server, without /v1 (e.g. http://192.168.1.50:11434). Defaults to the Ollama URL from Configure External Services. A ".local" name needs a Custom Host Mapping there.',
+        ),
+        required: true,
+        default: null,
+        placeholder: 'http://ollama-host:11434',
+      }),
+    }),
+  },
+})
+
 const inputSpec = InputSpec.of({
   primary: Value.union({
     name: i18n('Primary Provider'),
@@ -387,6 +418,14 @@ const inputSpec = InputSpec.of({
     ),
     default: 'none',
     variants: embeddingVariants,
+  }),
+  localModels: Value.union({
+    name: i18n('Local Chat Models for Agents'),
+    description: i18n(
+      'Offer the chat models on your own Ollama server to your agents (Configure Agents), so helper agents can run locally at no API cost.\n\nOnly models that can call tools are offered; embedding-only models are left out. Models you pull later appear in Configure Agents without saving this again. Local models are usually weaker than cloud models at multi-step tool work: try one on a narrow task first.',
+    ),
+    default: 'disabled',
+    variants: localModelsVariants,
   }),
 })
 
@@ -489,6 +528,100 @@ async function prefillEmbeddings() {
         value: { model: 'text-embedding-3-small' },
       }
     : { selection: 'none' as const, value: {} }
+}
+
+async function prefillLocalModels() {
+  const cfg = (await openclawJson
+    .read()
+    .once()
+    .catch(() => undefined)) as any
+  const url = cfg?.models?.providers?.[OLLAMA_SERVER_ID]?.baseUrl
+  if (url) return { selection: 'ollama' as const, value: { url } }
+  return { selection: 'disabled' as const, value: {} }
+}
+
+/** Agent ids whose model is on the user's Ollama server. */
+function agentsOnLocal(cfg: any): string[] {
+  const entries = (cfg?.agents?.entries ?? {}) as Record<string, any>
+  const uses = (m: any) =>
+    [
+      typeof m === 'string' ? m : m?.primary,
+      ...((m?.fallbacks as string[]) ?? []),
+    ]
+      .filter(Boolean)
+      .some((r: string) => r.startsWith(`${OLLAMA_SERVER_ID}/`))
+  return Object.entries(entries)
+    .filter(([, e]) => uses(e?.model))
+    .map(([id]) => id)
+}
+
+/**
+ * Apply the Local Chat Models choice. On: (re)write the provider entry with
+ * every tool-capable model the server has now, keeping any model an agent
+ * still uses. Off: remove the entry, unless an agent still runs on it.
+ */
+async function applyLocalModels(
+  effects: T.Effects,
+  sel: { selection: string; value: { url?: string | null } },
+) {
+  const cfg = (await openclawJson.read().once()) as any
+  const providers = { ...(cfg?.models?.providers ?? {}) }
+  if (sel.selection !== 'ollama') {
+    if (!providers[OLLAMA_SERVER_ID]) return
+    const users = agentsOnLocal(cfg)
+    if (users.length) {
+      throw new Error(
+        i18n(
+          'Local Chat Models cannot be turned off while agents use them. Give these agents another model in Configure Agents first:',
+        ) + ` ${users.join(', ')}`,
+      )
+    }
+    delete providers[OLLAMA_SERVER_ID]
+    await openclawJson.write(effects, {
+      ...cfg,
+      models: { ...(cfg?.models ?? {}), providers },
+    })
+    return
+  }
+  const base = (sel.value.url ?? '')
+    .trim()
+    .replace(/\/+$/, '')
+    .replace(/\/v1$/, '')
+  const { models, live } = await ollamaServerModels(base)
+  if (!live) {
+    throw new Error(
+      i18n(
+        'Could not reach your Ollama server to read its models. Check the URL (and a Custom Host Mapping for a ".local" name) and that Ollama is running, then save again.',
+      ) + ` (${base})`,
+    )
+  }
+  const keep = new Set(
+    Object.values((cfg?.agents?.entries ?? {}) as Record<string, any>)
+      .map((e) => (typeof e?.model === 'string' ? e.model : e?.model?.primary))
+      .filter(
+        (r: any) =>
+          typeof r === 'string' && r.startsWith(`${OLLAMA_SERVER_ID}/`),
+      )
+      .map((r: string) => r.slice(OLLAMA_SERVER_ID.length + 1)),
+  )
+  const list = models
+    .filter((m) => m.tools && !m.embedOnly)
+    .map(localModelEntry)
+  for (const id of keep) {
+    if (!list.some((m) => m.id === id)) list.push(localModelEntry({ id }))
+  }
+  providers[OLLAMA_SERVER_ID] = {
+    ...(providers[OLLAMA_SERVER_ID] ?? {}),
+    api: 'ollama',
+    baseUrl: base,
+    apiKey: 'ollama-local',
+    timeoutSeconds: 300,
+    models: list,
+  }
+  await openclawJson.write(effects, {
+    ...cfg,
+    models: { mode: 'merge', ...(cfg?.models ?? {}), providers },
+  })
 }
 
 // --- Save helper ---
@@ -628,6 +761,7 @@ export const configureApiCredentials = sdk.Action.withInput(
         value: {},
       },
       embeddings: await prefillEmbeddings(),
+      localModels: await prefillLocalModels(),
     }
   },
 
@@ -635,6 +769,16 @@ export const configureApiCredentials = sdk.Action.withInput(
   // local backends write a `models.providers.<id>` entry. Both set the
   // `provider/model` refs in openclaw.json, then restart.
   async ({ effects, input }) => {
+    // First: it can refuse (server unreachable, agents still using it), and
+    // nothing else should be saved then.
+    await applyLocalModels(
+      effects,
+      input.localModels as {
+        selection: string
+        value: { url?: string | null }
+      },
+    )
+
     const existing: Record<string, AuthProfile> =
       (await authProfilesJson.read((p) => p.profiles).once()) ?? {}
 

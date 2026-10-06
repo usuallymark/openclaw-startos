@@ -99,6 +99,7 @@ export const main = sdk.setupMain(async ({ effects }) => {
     '/opt/skills/start-cli',
     '/opt/skills/qdrant',
     '/opt/skills/health',
+    '/opt/skills/agents',
   ]
 
   const vw = ext?.vaultwarden

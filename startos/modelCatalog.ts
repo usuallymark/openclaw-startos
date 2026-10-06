@@ -234,6 +234,180 @@ export async function catalog(
   return out
 }
 
+// ── Your own Ollama server (local chat models for agents) ───────────────────
+//
+// The models a user's Ollama server has pulled, with what OpenClaw needs to
+// know about each. Only models that can call tools are offered for chat:
+// every OpenClaw agent works through tools, and an embedding-only or
+// tool-less model would fail on its first turn.
+
+/** models.providers id for the user's own Ollama server (chat models). */
+export const OLLAMA_SERVER_ID = 'ollama-server'
+
+export type LocalModel = {
+  id: string
+  tools: boolean
+  embedOnly: boolean
+  vision: boolean
+  thinking: boolean
+  contextWindow?: number
+}
+
+const LOCAL_CACHE_KEY = 'ollama-server'
+const localMemo = new Map<
+  string,
+  { at: number; p: Promise<LocalModel[] | null> }
+>()
+
+async function postJson(url: string, body: unknown) {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return (await res.json()) as any
+}
+
+async function fetchOllamaServer(baseUrl: string): Promise<LocalModel[]> {
+  const base = baseUrl.replace(/\/+$/, '')
+  const tags = await getJson(`${base}/api/tags`, {})
+  const names = ((tags?.models ?? []) as any[])
+    .map((m) => String(m?.name ?? m?.model ?? ''))
+    .filter(Boolean)
+  const out = await Promise.all(
+    names.map(async (id): Promise<LocalModel> => {
+      try {
+        const show = await postJson(`${base}/api/show`, { model: id })
+        const caps = ((show?.capabilities ?? []) as string[]).map(String)
+        const info = (show?.model_info ?? {}) as Record<string, unknown>
+        const arch = String(info['general.architecture'] ?? '')
+        const ctx = Number(info[`${arch}.context_length`])
+        return {
+          id,
+          tools: caps.includes('tools'),
+          embedOnly: caps.includes('embedding') && !caps.includes('completion'),
+          vision: caps.includes('vision'),
+          thinking: caps.includes('thinking'),
+          contextWindow: Number.isFinite(ctx) && ctx > 0 ? ctx : undefined,
+        }
+      } catch {
+        // Unknown capabilities: not offered (we can't tell it calls tools).
+        return {
+          id,
+          tools: false,
+          embedOnly: false,
+          vision: false,
+          thinking: false,
+        }
+      }
+    }),
+  )
+  return out.sort((a, b) => a.id.localeCompare(b.id))
+}
+
+async function readLocalCache(): Promise<LocalModel[]> {
+  const c = (await readCache()) as any
+  return (c?.[LOCAL_CACHE_KEY]?.models ?? []) as LocalModel[]
+}
+
+/**
+ * Every model on the user's Ollama server, live (cached on success); the last
+ * list seen when the server can't be reached; [] when there is none.
+ */
+export async function ollamaServerModels(
+  baseUrl: string | undefined,
+): Promise<{ models: LocalModel[]; live: boolean }> {
+  if (!baseUrl) return { models: [], live: false }
+  const hit = localMemo.get(baseUrl)
+  const p =
+    hit && Date.now() - hit.at < MEMO_MS
+      ? hit.p
+      : (() => {
+          const promise = fetchOllamaServer(baseUrl)
+            .then(async (models) => {
+              cacheWrite = cacheWrite
+                .then(async () => {
+                  const cache = (await readCache()) as any
+                  cache[LOCAL_CACHE_KEY] = {
+                    models,
+                    at: new Date().toISOString(),
+                  }
+                  await mkdir(dirname(CACHE_FILE), { recursive: true })
+                  await writeFile(CACHE_FILE, JSON.stringify(cache, null, 2))
+                })
+                .catch(() => {})
+              await cacheWrite
+              return models
+            })
+            .catch(() => null)
+          localMemo.set(baseUrl, { at: Date.now(), p: promise })
+          return promise
+        })()
+  const fresh = await p
+  return fresh
+    ? { models: fresh, live: true }
+    : { models: await readLocalCache(), live: false }
+}
+
+/** The models.providers entry for one local model (what OpenClaw needs). */
+export function localModelEntry(m: LocalModel | { id: string }) {
+  const lm = m as Partial<LocalModel> & { id: string }
+  return {
+    id: lm.id,
+    name: lm.id,
+    input: lm.vision ? ['text', 'image'] : ['text'],
+    ...(lm.thinking ? { reasoning: true } : {}),
+    ...(lm.contextWindow
+      ? {
+          contextWindow: lm.contextWindow,
+          // Same cap OpenClaw's own Ollama discovery uses: keeps num_ctx sane
+          // on small machines while overriding Ollama's tiny 4k default.
+          contextTokens: Math.min(lm.contextWindow, 32_768),
+        }
+      : {}),
+  }
+}
+
+/**
+ * Every chat model an agent can be given, as `provider/model` → label:
+ * cloud providers with a saved key (live, cached or built-in), then the
+ * tool-capable models of the user's Ollama server, then `current` ids.
+ */
+export async function agentModelChoices(
+  builtins: Partial<Record<CloudProvider, Record<string, string>>>,
+  ollamaServerUrl: string | undefined,
+  current: (string | undefined)[] = [],
+): Promise<Record<string, string>> {
+  const out: Record<string, string> = {}
+  const add = (id: string | undefined, label: string) => {
+    if (id && !(id in out)) out[id] = label
+  }
+  const NAMES: Record<CloudProvider, string> = {
+    anthropic: 'Anthropic',
+    openai: 'OpenAI',
+    google: 'Google',
+    xai: 'xAI',
+  }
+  for (const p of ['anthropic', 'openai', 'google', 'xai'] as CloudProvider[]) {
+    if (!(await keyFor(p))) continue
+    const values = await catalog(p, 'chat', builtins[p] ?? {})
+    for (const [id, label] of Object.entries(values)) {
+      add(`${p}/${id}`, `${NAMES[p]} · ${label}`)
+    }
+  }
+  if (ollamaServerUrl) {
+    const { models } = await ollamaServerModels(ollamaServerUrl)
+    for (const m of models) {
+      if (m.tools && !m.embedOnly)
+        add(`${OLLAMA_SERVER_ID}/${m.id}`, `Local · ${m.id}`)
+    }
+  }
+  for (const id of current) add(id, `${id} (current)`)
+  return out
+}
+
 /** A default that is guaranteed to be one of `values`. */
 export function pickDefault(values: Record<string, string>, preferred: string) {
   return preferred in values ? preferred : (Object.keys(values)[0] ?? preferred)
