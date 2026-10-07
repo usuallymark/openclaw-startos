@@ -64,13 +64,10 @@ POWERFUL_TOOLS = {
     'group:plugins', 'group:messaging',
 }
 ALWAYS_BLOCKED = ('gateway', 'cron')
-# Models the provider offers but this OpenClaw (2026.9.4) predates and
-# cannot drive (requests fail with HTTP 400). Keep in sync with
-# startos/modelCatalog.ts UNSUPPORTED; empty it after an OpenClaw upgrade.
-UNSUPPORTED = {
-    'anthropic': re.compile(r'^claude-(?:opus|sonnet)-5-5(?![0-9])'),
-    'openai': re.compile(r'^gpt-6(?![0-9])'),
-}
+# Models the provider offers but the bundled OpenClaw predates and cannot
+# drive (requests fail). Keep in sync with startos/modelCatalog.ts
+# UNSUPPORTED. Empty since OpenClaw 2026.9.8 (Opus/Sonnet 5.5, GPT-6 work).
+UNSUPPORTED = {}
 
 
 def unsupported(provider, mid):

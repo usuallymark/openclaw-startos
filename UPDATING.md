@@ -43,6 +43,11 @@ OpenClaw is installed into the image at build time by the official `openclaw.bot
 - **OpenClaw** — edit `Dockerfile` and update the `OPENCLAW_VERSION` ARG default to the npm `latest` value (no `v` prefix), keeping any `-N` correction suffix. Then set `startos/versions/current.ts` per the warning above — base version only, downstream bumped. If the new OpenClaw gates startup on a state migration of its own (`gateway.maintenance_required`, exit 78), run it from `migrations.up`; the packaging guide's versions page says when that earns `current.ts` its own file.
 - **GitHub CLI** — edit `Dockerfile` and update the `GH_VERSION` ARG default to the new version (no `v` prefix).
 
+Two more things move with `OPENCLAW_VERSION`:
+
+- **The webchat's gateway client.** `webchat/package.json` pins `@openclaw/gateway-client` and `@openclaw/gateway-protocol` to the exact OpenClaw version. Bump both and refresh the lock file (`cd webchat && npm install --package-lock-only`).
+- **State migrations.** Newer OpenClaw releases refuse to open agent databases written by older ones until `openclaw doctor` has migrated them with the gateway stopped (2026.9.4 → 2026.9.8: the gateway starts but logs "agent database uses schema version 19 … run openclaw doctor --fix" and never opens its port). The `state-migrate` oneshot in `startos/main.ts` runs `openclaw doctor --non-interactive` once per OpenClaw version before the gateway starts, so nothing needs doing per bump; but test the upgrade on a state directory written by the previous version (run the old gateway on a copy of a real config, stop it, then run the oneshot's script and the new gateway) and mention the backup in the release notes.
+
 After editing, confirm with `grep -rn '<OLD_VERSION>' --include='*.ts' --include=Dockerfile` that no stale references remain, then update `releaseNotes` in `startos/versions/current.ts` per the package's versioning conventions.
 
 ## The baked `start-cli` (`START_CLI_VERSION`)
@@ -70,3 +75,5 @@ gh release view "start-cli/v<version>" -R Start9Labs/start-technologies \
 ```
 
 Finally, check whether the new CLI needs a newer StartOS than the package itself does — **the two floors are independent.** `start-cli` 1.1.0 replaced cookie auth with per-device signing keys, so its `auth login` only works against a StartOS that speaks signature auth, which first shipped in `start-os/v0.4.0`. The package's own floor is the manifest `osVersion`, which start-sdk 2.0 sets to `0.4.0-beta.10` — a version that was never released, since the beta line ends at `beta.9`. So every host that can install this package already clears the CLI's floor, but that is a coincidence of the two numbers, not a rule. Re-derive it on the next CLI bump rather than assuming the SDK's floor covers it.
+
+2.2.0 (from 1.1.0) was checked by capturing the requests both versions send for every command the package runs (`auth login`, `auth session list`, `server metrics`, `package list`, `notification list`): identical RPC methods, parameters and `x-start-auth-sig` header, same `~/.startos/config.yaml` and `id.key.pem`. So 2.2.0 works wherever 1.1.0 did. Its breaking changes (`server experimental governor` → `server governor`, one-argument `server set-hostname`, `setup execute` without `--name`, stable disk paths for `setup install-os`) only touch commands the package doesn't run; `skills/start-cli/SKILL.md` documents the 2.2.0 forms. Repeat that capture on the next bump.

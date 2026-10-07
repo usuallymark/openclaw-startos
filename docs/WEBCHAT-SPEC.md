@@ -49,7 +49,7 @@ rebuilt for StartOS 0.4 and the 2026.9 gateway.
 - **One daemon, `webchat`**, in the existing openclaw subcontainer, added to
   `main.ts` only when enabled. Requires `primary` (the gateway).
 - **Gateway connection (server-side only).** Uses the official
-  `@openclaw/gateway-client@2026.9.4` (exact pin, matches the gateway).
+  `@openclaw/gateway-client` (exact pin, matches the gateway's `OPENCLAW_VERSION`; bumped with it, see UPDATING.md).
   - Client identity: `id: "gateway-client"`, `mode: "backend"`,
     `role: "operator"`, scopes `operator.read` + `operator.write`, protocol v4.
   - Auth: gateway password read from `openclaw.json` (package-managed).

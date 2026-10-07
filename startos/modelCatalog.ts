@@ -212,18 +212,14 @@ function live(p: CloudProvider): Promise<Lists | null> {
 }
 
 /**
- * Models the provider lists but the bundled OpenClaw cannot drive yet: it
- * predates them and builds a request they reject (HTTP 400). OpenClaw
- * 2026.9.4 has no Claude Opus/Sonnet 5.5 (added upstream in 2026.9.6 and
- * 2026.9.7) and no GPT-6. They are left out of every dropdown; a model
- * already configured stays selectable, marked. Empty this when the package
- * moves to an OpenClaw that supports them. Keep in sync with
- * skills/agents/agents.py UNSUPPORTED.
+ * Models the provider lists but the bundled OpenClaw cannot drive yet (it
+ * predates them and builds a request they reject). They are left out of every
+ * dropdown; a model already configured stays selectable, marked. Empty since
+ * OpenClaw 2026.9.8, which drives Claude Opus/Sonnet 5.5 and GPT-6; refill it
+ * if a provider ships a model ahead of the bundled OpenClaw again. Keep in
+ * sync with skills/agents/agents.py UNSUPPORTED.
  */
-const UNSUPPORTED: Partial<Record<CloudProvider, RegExp>> = {
-  anthropic: /^claude-(?:opus|sonnet)-5-5(?![0-9])/,
-  openai: /^gpt-6(?![0-9])/,
-}
+const UNSUPPORTED: Partial<Record<CloudProvider, RegExp>> = {}
 
 export const isUnsupported = (p: CloudProvider, id: string) =>
   !!UNSUPPORTED[p]?.test(id)

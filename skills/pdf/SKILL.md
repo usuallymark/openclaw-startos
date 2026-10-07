@@ -21,6 +21,8 @@ python3 /opt/skills/pdf/pdf.py ocr SCAN.pdf SCAN-searchable.pdf  # searchable co
 python3 /opt/skills/pdf/pdf.py ingest FILE.pdf COLLECTION        # into Qdrant
 ```
 
+- The text (printed or in `--out`) has a `--- page N ---` line before each
+  page, so you can tell which page a passage is on.
 - `text` with `--out` prints a short JSON summary: `pages`, `ocr_pages`
   (pages that were OCR'd), `empty_pages` (still no text: blank pages or
   images without words), `chars`, `seconds`. Prefer `--out` for anything
@@ -58,6 +60,7 @@ import pdf
 pdf.info(path)                          # dict: pages, text_pages, pages_without_text, metadata
 r = pdf.extract(path)                   # ocr='auto' | 'force' | 'never'
 r['text'], r['page_texts'], r['ocr_pages'], r['empty_pages']
+pdf.paged_text(r)                       # text with '--- page N ---' markers
 pdf.chunks(r)                           # [{'text', 'page', 'chunk'}] for your own embedding
 pdf.ocr(path, out_path, force=False)    # searchable PDF
 pdf.ingest(path, 'collection', source=None, replace=False, create=False, extra_payload=None)

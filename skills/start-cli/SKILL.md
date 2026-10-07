@@ -14,8 +14,11 @@ All commands use **positional arguments** for primary identifiers (package IDs, 
 
 ## CRITICAL: Only Use Documented Commands
 
+This file matches start-cli 2.2.0. Commands marked "newer StartOS" call server functions that an older StartOS may not have; if the server answers with an unknown-method error, say so instead of retrying.
+
 **Only use commands exactly as documented in this file.** Do not guess or invent subcommands. If a command is not listed here, it does not exist. Common mistakes to avoid:
 
+- **`start-cli server experimental governor`** — REMOVED in start-cli 2.0. Use `start-cli server governor [GOVERNOR]`.
 - **`start-cli registry list`** — DOES NOT EXIST. Use `start-cli -r <URL> registry package get` (no ID = list all).
 - **`start-cli registry package list`** — DOES NOT EXIST. Use `start-cli -r <URL> registry package get` (no ID = list all).
 - **`start-cli server check-update`** — DOES NOT EXIST. Use `start-cli server update <REGISTRY_URL>`.
@@ -240,6 +243,7 @@ Manage networking including DNS, gateways, tunnels, SSL certificates, and virtua
 | ----------------------------------------------------------------- | --------------------------------------- |
 | `start-cli net acme init --provider <PROVIDER> --contact <EMAIL>` | Setup automatic certificate acquisition |
 | `start-cli net acme remove --provider <PROVIDER>`                 | Remove ACME certificate configuration   |
+| `start-cli net acme check-challenge --acme <ACME> <FQDN> <GATEWAY>` | Check that the port the certificate authority validates on is reachable (newer StartOS) |
 
 ### SSL Commands
 
@@ -272,6 +276,8 @@ Manage networking including DNS, gateways, tunnels, SSL certificates, and virtua
 | `start-cli net gateway check-port <PORT> <GATEWAY>`    | Check port accessibility through a gateway  |
 | `start-cli net gateway check-port-v6 <PORT> <GATEWAY>` | Check IPv6 (GUA firewall) port reachability |
 | `start-cli net gateway forget <GATEWAY>`               | Forget a disconnected gateway               |
+| `start-cli net gateway set-secure <GATEWAY> [true\|false]` | Flag a gateway's network as trusted, so non-SSL addresses are offered on it (newer StartOS) |
+| `start-cli net gateway unset-secure <GATEWAY>`         | Let StartOS decide whether a gateway's network is trusted (newer StartOS) |
 
 ### Virtual Host Commands
 
@@ -545,7 +551,7 @@ Then use each registry URL with the `--registry` flag to query **registry** comm
 | `start-cli -r <URL> registry os version signer remove`                     | Remove an OS version signer                     |
 | `start-cli -r <URL> registry os version signer list`                       | List OS version signers                         |
 | `start-cli -r <URL> registry os asset add`                                 | Add an OS asset                                 |
-| `start-cli -r <URL> registry os asset remove`                              | Remove an OS asset                              |
+| `start-cli -r <URL> registry os asset remove img\|iso\|squashfs <VERSION> <PLATFORM>` | Remove an OS asset                |
 | `start-cli -r <URL> registry os asset get img <VERSION> <PLATFORM>`        | Download an OS IMG asset                        |
 | `start-cli -r <URL> registry os asset get iso <VERSION> <PLATFORM>`        | Download an OS ISO asset                        |
 | `start-cli -r <URL> registry os asset get squashfs <VERSION> <PLATFORM>`   | Download an OS squashfs (pairs with `flash-os`) |
@@ -612,7 +618,7 @@ StartOS packaging is done inside a **packaging workspace** and is designed to be
 | `start-cli s9pk init-workspace [PATH]` | Create/initialize a packaging workspace (default: current directory)        |
 | `start-cli s9pk init-package "<Name>"` | Scaffold a new package from the workspace template (run inside a workspace) |
 
-**`init-workspace`** clones the Start9 monorepo into `start-technologies/` (the packaging **guide** plus the SDK and OS source), writes the agent-context files (`AGENTS.md` → the guide's Agent Context page, your own `AGENTS.local.md`, and a `CLAUDE.md` that loads both), and creates a `.startos/` directory that marks the workspace and holds your **build-key** (signs your packages) and a `config.yaml` of named `host:` / `registry:` profiles. The resulting layout:
+**`init-workspace`** clones the Start9 monorepo (its `live-docs` branch) into `start-technologies/` (the packaging **guide** plus the SDK and OS source), writes the agent-context files (`AGENTS.md` → the guide's Agent Context page, your own `AGENTS.local.md`, and a `CLAUDE.md` that loads both), and creates a `.startos/` directory that marks the workspace and holds your **build-key** (signs your packages) and a `config.yaml` of named `host:` / `registry:` profiles. The resulting layout:
 
 ```
 start9-workspace/
@@ -725,7 +731,8 @@ Note: There is no `start-cli server check-update` command. To check for updates,
 | `start-cli server update <REGISTRY_URL>`          | Check for and apply StartOS updates                    |
 | `start-cli server update-firmware`                | Update mainboard firmware                              |
 | `start-cli server set-echoip-urls [URLS]...`      | Set the Echo IP service URLs for external IP detection |
-| `start-cli server set-hostname [NAME] [HOSTNAME]` | Set the server hostname                                |
+| `start-cli server set-hostname <HOSTNAME>`        | Set the .local hostname (up to 32 lowercase letters, digits, hyphens; no leading/trailing hyphen) |
+| `start-cli server trust-ca --cert <PEM>`          | Trust a custom CA root for StartOS host processes (newer StartOS) |
 
 ### Update Options
 
@@ -772,7 +779,8 @@ The system-UI host mirrors the `package host` tree (same `address` / `binding` s
 
 | Command                                             | Description                                                     |
 | --------------------------------------------------- | --------------------------------------------------------------- |
-| `start-cli server experimental governor [GOVERNOR]` | Show or set CPU governor                                        |
+| `start-cli server governor [GOVERNOR]`              | Show or set the CPU governor                                    |
+| `start-cli server epp [PREFERENCE]`                 | Show or set the CPU energy/performance preference (newer StartOS) |
 | `start-cli server experimental zram [--enable]`     | Enable ZRAM compression (bare `--enable` flag; omit to disable) |
 
 ### Examples
@@ -815,10 +823,10 @@ Commands available during initial server bring-up (before `setup complete`). A s
 | `start-cli setup disk list`                                     | List disks available for installation                             |
 | `start-cli setup logs`                                          | Display setup/OS logs                                             |
 | `start-cli setup cifs`                                          | Manage a CIFS share during setup                                  |
-| `start-cli setup execute`                                       | Run the initial setup against an installed OS or fresh data drive |
+| `start-cli setup execute --guid <GUID> [--hostname <HOSTNAME>]` | Run the initial setup against an installed OS or fresh data drive |
 | `start-cli setup complete`                                      | Finalize setup and persist disk identifiers                       |
 | `start-cli setup attach`                                        | Attach an existing StartOS data drive without re-running setup    |
-| `start-cli setup install-os`                                    | Install StartOS to a disk over the network                        |
+| `start-cli setup install-os <OS_DRIVE> [--data-drive <DRIVE>] [--wipe]` | Install StartOS over the network; drives are the `stablePath` values from `setup disk list`, not `/dev/sdX` |
 | `start-cli setup exit`                                          | Exit setup mode and reboot into the installed OS                  |
 | `start-cli setup restart` / `shutdown`                          | Restart / shut down the device from setup mode                    |
 | `start-cli setup set-language <CODE>` / `set-keyboard <LAYOUT>` | Set language / keyboard during setup                              |
@@ -1001,6 +1009,7 @@ start-cli wifi country set US
 | Command                                | Description                                                                                               |
 | -------------------------------------- | --------------------------------------------------------------------------------------------------------- |
 | `start-cli echo <MESSAGE>`             | Echo a message (for testing)                                                                              |
+| `start-cli completions <SHELL>`        | Print a shell completion script (bash, zsh, fish, elvish, powershell)                                     |
 | `start-cli git-info`                   | Display the git hash / version of StartOS                                                                 |
 | `start-cli state`                      | Display the API state (Error / Initializing / Running)                                                    |
 | `start-cli flash-os <SQUASHFS> <DISK>` | Flash a StartOS squashfs image to a drive (`--efi true\|false`)                                           |

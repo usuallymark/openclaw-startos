@@ -6,6 +6,7 @@ Python:
     pdf.info('/data/inbox/report.pdf')         # pages, which pages have text
     r = pdf.extract('/data/inbox/scan.pdf')    # OCRs only pages without text
     r['text'], r['page_texts'], r['ocr_pages']
+    pdf.paged_text(r)                          # text with '--- page N ---' markers
     pdf.ocr('/data/inbox/scan.pdf', '/data/inbox/scan-searchable.pdf')
     pdf.chunks(r)                              # [{'text', 'page', 'chunk'}] for embedding
     pdf.ingest('/data/inbox/scan.pdf', 'my-collection')
@@ -184,6 +185,13 @@ def extract(path, ocr='auto', lang=DEFAULT_LANG, jobs=DEFAULT_JOBS, timeout=None
     }
 
 
+def paged_text(result):
+    """The text with a '--- page N ---' line before each page (empty pages
+    included), so a reader can tell which page a passage is on."""
+    return '\n\n'.join(f'--- page {n} ---\n{t.strip()}'
+                        for n, t in enumerate(result['page_texts'], start=1)).rstrip()
+
+
 # ── chunking + ingest ─────────────────────────────────────────────────────
 
 def _split(text, size, overlap):
@@ -313,14 +321,14 @@ def main(argv=None):
             if a.out:
                 os.makedirs(os.path.dirname(os.path.abspath(a.out)) or '.', exist_ok=True)
                 with open(a.out, 'w') as f:
-                    f.write(r['text'] + '\n')
+                    f.write(paged_text(r) + '\n')
                 _give_to_node(a.out)
                 summary['out'] = a.out
                 print(json.dumps(summary, indent=2))
             elif a.json:
                 print(json.dumps(r, indent=2))
             else:
-                print(r['text'])
+                print(paged_text(r))
                 print(json.dumps(summary), file=sys.stderr)
             msg = f'{label}: {r["pages"]} pages, OCR on {len(r["ocr_pages"])}'
         elif a.cmd == 'ocr':

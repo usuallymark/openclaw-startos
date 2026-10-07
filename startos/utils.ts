@@ -10,7 +10,7 @@ export const webchatPort = 18800
 export const webchatUploadPort = 18801
 
 // start-cli release whose binary the image installs (see UPDATING.md).
-export const START_CLI_VERSION = '1.1.0'
+export const START_CLI_VERSION = '2.2.0'
 
 // Qdrant version pinned here so it is visible alongside openclaw's version pin
 // in the Dockerfile. Bump both together when upgrading.

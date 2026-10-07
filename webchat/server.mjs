@@ -333,7 +333,18 @@ function onGatewayEvent(evt) {
 
 async function gwRequest(method, params) {
   if (!gwConnected) throw new Error('Not connected to OpenClaw')
-  return gw.request(method, params)
+  try {
+    return await gw.request(method, params)
+  } catch (e) {
+    // OpenClaw >= 2026.9.5 refuses a session mutation when the session changed
+    // underneath it (e.g. a label update racing the first message) and asks
+    // for a retry. Requests carry idempotency keys, so one retry is safe.
+    if (/SessionMutationAuthorizationChanged|retry the request/.test(String(e?.message ?? e))) {
+      await new Promise((r) => setTimeout(r, 250))
+      return gw.request(method, params)
+    }
+    throw e
+  }
 }
 
 async function listConversations(p) {
@@ -440,7 +451,7 @@ function ensurePrimed(p, key) {
     }
     await gwRequest('chat.send', { sessionKey: key, message: text, idempotencyKey: `prime-${key}`.slice(0, 200) })
     markDone()
-    if (topic) gwRequest('sessions.patch', { key, label: topic.slice(0, 80) }).catch(() => {})
+    if (topic) await gwRequest('sessions.patch', { key, label: topic.slice(0, 80) }).catch(() => {})
     return true
   })().finally(() => priming.delete(key))
   priming.set(key, job)

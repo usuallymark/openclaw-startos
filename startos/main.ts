@@ -58,6 +58,21 @@ const providerKeyEnvVar: Record<string, string> = {
   xai: 'XAI_API_KEY',
 }
 
+const STATE_MIGRATE_SCRIPT = `
+marker=/data/.startos/openclaw-doctor-version
+ver=$(openclaw --version 2>/dev/null | awk '{print $2}')
+if [ -z "$ver" ]; then echo "state-migrate: could not read the OpenClaw version"; exit 0; fi
+if [ "$(cat "$marker" 2>/dev/null)" = "$ver" ]; then exit 0; fi
+echo "state-migrate: running openclaw doctor --non-interactive once for OpenClaw $ver (1-2 minutes)"
+if openclaw doctor --non-interactive; then
+  mkdir -p /data/.startos && printf '%s' "$ver" > "$marker"
+  echo "state-migrate: done"
+else
+  echo "state-migrate: openclaw doctor failed (exit $?); retrying at the next start"
+fi
+exit 0
+`
+
 export const main = sdk.setupMain(async ({ effects }) => {
   console.info(i18n('Starting OpenClaw Gateway!'))
 
@@ -363,6 +378,26 @@ export const main = sdk.setupMain(async ({ effects }) => {
       },
       requires: [],
     })
+    // OpenClaw (since 2026.9.5) does not migrate an older agent database on
+    // its own: the gateway starts but refuses sessions until
+    // `openclaw doctor` has run with the gateway stopped. Run it once per
+    // OpenClaw version, before the gateway; the marker holds the version it
+    // last succeeded for. A failure does not block startup (it is retried at
+    // the next start).
+    .addOneshot('state-migrate', {
+      subcontainer: openclawSub,
+      exec: {
+        command: ['sh', '-c', STATE_MIGRATE_SCRIPT],
+        user: 'node',
+        env: {
+          HOME: '/data',
+          OPENCLAW_STATE_DIR: '/data/.openclaw',
+          NODE_EXTRA_CA_CERTS: '/etc/ssl/certs/ca-certificates.crt',
+          NO_COLOR: '1',
+        },
+      },
+      requires: ['chown'],
+    })
     // Host mappings (/etc/hosts) and custom CA certs. Independent of
     // Vaultwarden: any internal service may need them. .local names never
     // resolve on StartOS (startd treats them as mDNS), hence /etc/hosts.
@@ -564,6 +599,7 @@ export const main = sdk.setupMain(async ({ effects }) => {
       requires: [
         'install-root-ca',
         'chown',
+        'state-migrate',
         'network-setup',
         'setup-vault',
         'qdrant',
