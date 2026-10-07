@@ -174,6 +174,18 @@ def resources():
                     'message': f'{avail} MiB available of {total} MiB'})
     except (OSError, ValueError) as e:
         out.append({'key': 'memory', 'label': 'Memory', 'ok': False, 'message': f'error: {e}'})
+    tess = shutil.which('tesseract')
+    if not tess:
+        out.append({'key': 'pdf', 'label': 'PDF/OCR tools', 'ok': False, 'message': 'tesseract not found'})
+    else:
+        try:
+            r = subprocess.run([tess, '--list-langs'], capture_output=True, text=True, timeout=15)
+            langs = {ln.strip() for ln in (r.stdout + r.stderr).splitlines()[1:]}
+            ok = 'eng' in langs
+            out.append({'key': 'pdf', 'label': 'PDF/OCR tools', 'ok': ok,
+                        'message': 'Tesseract with English' if ok else 'Tesseract has no English data'})
+        except (subprocess.TimeoutExpired, OSError) as e:
+            out.append({'key': 'pdf', 'label': 'PDF/OCR tools', 'ok': False, 'message': f'error: {e}'})
     return out
 
 

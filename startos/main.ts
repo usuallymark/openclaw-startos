@@ -100,6 +100,7 @@ export const main = sdk.setupMain(async ({ effects }) => {
     '/opt/skills/qdrant',
     '/opt/skills/health',
     '/opt/skills/agents',
+    '/opt/skills/pdf',
   ]
 
   const vw = ext?.vaultwarden
@@ -160,17 +161,6 @@ export const main = sdk.setupMain(async ({ effects }) => {
       externalEnv['TRILIUM_KEY_FROM_VAULT'] = 'Trilium:API_Key'
     }
     enabledSkills.push('/opt/skills/trilium')
-  }
-
-  if (ext?.stirling?.enabled && ext.stirling.url) {
-    externalEnv['STIRLING_URL'] = ext.stirling.url
-    const k = ext.stirling.apiKey
-    if (k?.source === 'manual' && k.value) {
-      externalEnv['STIRLING_KEY'] = k.value
-    } else if (k?.source === 'from-vaultwarden') {
-      externalEnv['STIRLING_KEY_FROM_VAULT'] = 'StirlingPDF:API_Key'
-    }
-    enabledSkills.push('/opt/skills/stirling')
   }
 
   if (ext?.searxng?.enabled && ext.searxng.url) {
@@ -700,15 +690,6 @@ export const main = sdk.setupMain(async ({ effects }) => {
       ready: {
         display: extChecks.trilium.display,
         fn: () => extChecks.trilium.fn(openclawSub),
-        trigger: externalTrigger,
-        gracePeriod: 0,
-      },
-      requires: ['network-setup'],
-    })
-    .addHealthCheck('ext-stirling', {
-      ready: {
-        display: extChecks.stirling.display,
-        fn: () => extChecks.stirling.fn(openclawSub),
         trigger: externalTrigger,
         gracePeriod: 0,
       },

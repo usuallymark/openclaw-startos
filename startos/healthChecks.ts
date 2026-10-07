@@ -168,7 +168,6 @@ export type ExtConfig =
       nas?: { enabled?: boolean; host?: string }
       n8n?: { enabled?: boolean; url?: string }
       trilium?: { enabled?: boolean; url?: string }
-      stirling?: { enabled?: boolean; url?: string }
       searxng?: { enabled?: boolean; url?: string }
       crawl4ai?: { enabled?: boolean; url?: string }
       ntfy?: { enabled?: boolean; url?: string }
@@ -200,7 +199,6 @@ const HTTP_PATHS = {
   // Trilium's URL already ends in /etapi; app-info answers 401 without a
   // token, which still proves the ETAPI is up.
   trilium: ['Trilium', '/app-info'],
-  stirling: ['Stirling PDF', '/api/v1/info/status'],
   searxng: ['SearXNG', '/healthz'],
   // /health needs no token and answers {"status":"ok",...}.
   crawl4ai: ['Crawl4AI', '/health'],
@@ -233,7 +231,6 @@ export function externalTargets(ext: ExtConfig): HealthTarget[] {
   }
   push('n8n')
   push('trilium')
-  push('stirling')
   push('searxng')
   push('crawl4ai')
   push('ntfy')
@@ -263,7 +260,6 @@ export function externalChecks(ext: ExtConfig) {
     ollama: specFor(byKey.get('ollama')),
     n8n: specFor(byKey.get('n8n')),
     trilium: specFor(byKey.get('trilium')),
-    stirling: specFor(byKey.get('stirling')),
     searxng: specFor(byKey.get('searxng')),
     crawl4ai: specFor(byKey.get('crawl4ai')),
     ntfy: specFor(byKey.get('ntfy')),

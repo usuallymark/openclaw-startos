@@ -26,10 +26,9 @@ import urllib.error
 import urllib.request
 
 sys.path.insert(0, '/opt/skills/rbw')
-from creds import CredentialError, auth_headers  # noqa: E402
+from creds import CredentialError, auth_headers, not_configured, use_gateway_env  # noqa: E402
 
 PRIORITIES = {'min': 1, 'low': 2, 'default': 3, 'high': 4, 'urgent': 5, 'max': 5}
-_VARS = ('NTFY_URL', 'NTFY_TOPIC', 'NTFY_KEY', 'NTFY_KEY_FROM_VAULT')
 
 
 class NtfyError(RuntimeError):
@@ -38,25 +37,7 @@ class NtfyError(RuntimeError):
 
 def _load_settings():
     """Copy the NTFY_* settings from the gateway process if we lack them."""
-    if os.environ.get('NTFY_URL'):
-        return
-    for pid in os.listdir('/proc'):
-        if not pid.isdigit():
-            continue
-        try:
-            with open(f'/proc/{pid}/environ', 'rb') as f:
-                items = f.read().split(b'\0')
-        except OSError:
-            continue
-        found = {}
-        for item in items:
-            k, _, v = item.partition(b'=')
-            name = k.decode(errors='replace')
-            if name in _VARS:
-                found[name] = v.decode(errors='replace')
-        if found.get('NTFY_URL'):
-            os.environ.update(found)
-            return
+    use_gateway_env('NTFY_URL')
 
 
 def _priority(p):
@@ -77,7 +58,7 @@ def send(message, title=None, priority=None, tags=None, topic=None, click=None,
     _load_settings()
     base = os.environ.get('NTFY_URL', '').strip().rstrip('/')
     if not base:
-        raise NtfyError('ntfy is not configured. Enable it in Configure External Services.')
+        raise NtfyError(not_configured('NTFY_URL', 'ntfy'))
     topic = (topic or os.environ.get('NTFY_TOPIC', '')).strip()
     if not topic:
         raise NtfyError('No topic: set a Default Topic in Configure External Services or pass one.')

@@ -69,10 +69,10 @@ const shape = z.object({
   nas: nasShape.catch({ enabled: false }),
   n8n: urlWithKeyShape.catch({ enabled: false }),
   trilium: urlWithKeyShape.catch({ enabled: false }),
-  stirling: urlWithKeyShape.catch({ enabled: false }),
   searxng: urlOnlyShape.catch({ enabled: false }),
-  // Firecrawl (<= 2026.9.4:9) was replaced by Crawl4AI; an old `firecrawl`
-  // key in the file is ignored and dropped on the next save.
+  // Firecrawl (<= 2026.9.4:9) was replaced by Crawl4AI and Stirling PDF
+  // (<= 2026.9.4:19) by the built-in pdf skill; an old `firecrawl` or
+  // `stirling` key in the file is ignored and dropped on the next save.
   crawl4ai: urlWithKeyShape.catch({ enabled: false }),
   ntfy: ntfyShape.catch({ enabled: false }),
 })

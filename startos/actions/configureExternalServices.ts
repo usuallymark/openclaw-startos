@@ -213,32 +213,6 @@ const triliumService = Value.union({
   }),
 })
 
-const stirlingService = Value.union({
-  name: 'Stirling PDF',
-  description:
-    'Stirling PDF is a self-hosted PDF manipulation tool. Used by agents for OCR processing of documents.\nGitHub: https://github.com/Stirling-Tools/Stirling-PDF',
-  default: 'disabled',
-  variants: Variants.of({
-    disabled: { name: 'Disabled', spec: InputSpec.of({}) },
-    enabled: {
-      name: 'Enabled',
-      spec: InputSpec.of({
-        url: urlField(
-          'Stirling PDF URL',
-          'The URL of your Stirling PDF instance, e.g. https://pdf.yourdomain.local',
-          'https://pdf.yourdomain.local',
-        ),
-        apiKey: credentialUnion(
-          'API Key',
-          'StirlingPDF',
-          'API_Key',
-          'Stirling PDF API key. Only required if authentication is enabled. Found in Stirling PDF → Settings → Security.',
-        ),
-      }),
-    },
-  }),
-})
-
 const searxngService = Value.union({
   name: 'SearXNG (Web Search)',
   description:
@@ -394,7 +368,6 @@ const inputSpec = InputSpec.of({
   nas: nasService,
   n8n: n8nService,
   trilium: triliumService,
-  stirling: stirlingService,
   searxng: searxngService,
   crawl4ai: crawl4aiService,
   ntfy: ntfyService,
@@ -429,7 +402,7 @@ export const configureExternalServices = sdk.Action.withInput(
   async ({ effects }) => ({
     name: 'Configure External Services',
     description:
-      'Connect OpenClaw to your self-hosted tools (Vaultwarden, Ollama, NAS, n8n, Trilium, Stirling PDF, SearXNG, Crawl4AI, ntfy), plus host mappings and a custom CA for internal HTTPS services. Enable only the services you use. If Vaultwarden is enabled, other services can fetch their credentials from it automatically. Saving restarts OpenClaw to apply changes.',
+      'Connect OpenClaw to your self-hosted tools (Vaultwarden, Ollama, NAS, n8n, Trilium, SearXNG, Crawl4AI, ntfy), plus host mappings and a custom CA for internal HTTPS services. Enable only the services you use. If Vaultwarden is enabled, other services can fetch their credentials from it automatically. Saving restarts OpenClaw to apply changes.',
     warning: null,
     allowedStatuses: 'any',
     group: null,
@@ -451,7 +424,6 @@ export const configureExternalServices = sdk.Action.withInput(
     const nas = cfg?.nas
     const n8n = cfg?.n8n
     const trilium = cfg?.trilium
-    const stirling = cfg?.stirling
     const searxng = cfg?.searxng
     const crawl4ai = cfg?.crawl4ai
     const ntfy = cfg?.ntfy
@@ -501,15 +473,6 @@ export const configureExternalServices = sdk.Action.withInput(
             value: {
               url: trilium.url ?? '',
               apiKey: credToPrefill(trilium.apiKey),
-            },
-          }
-        : { selection: 'disabled' as const, value: {} },
-      stirling: stirling?.enabled
-        ? {
-            selection: 'enabled' as const,
-            value: {
-              url: stirling.url ?? '',
-              apiKey: credToPrefill(stirling.apiKey),
             },
           }
         : { selection: 'disabled' as const, value: {} },
@@ -606,15 +569,6 @@ export const configureExternalServices = sdk.Action.withInput(
           }
         : { enabled: false }
 
-    const stirling =
-      i.stirling.selection === 'enabled'
-        ? {
-            enabled: true,
-            url: i.stirling.value.url,
-            apiKey: credToStored(i.stirling.value.apiKey),
-          }
-        : { enabled: false }
-
     const searxng =
       i.searxng.selection === 'enabled'
         ? { enabled: true, url: i.searxng.value.url }
@@ -651,7 +605,6 @@ export const configureExternalServices = sdk.Action.withInput(
       nas,
       n8n,
       trilium,
-      stirling,
       searxng,
       crawl4ai,
       ntfy,

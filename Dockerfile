@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \
     jq \
+    procps \
     python3 \
     ripgrep \
     tmux \
@@ -36,17 +37,25 @@ RUN mkdir -p /data && \
 RUN curl -fsSL "https://github.com/Start9Labs/start-technologies/releases/download/start-cli%2Fv${START_CLI_VERSION}/start-cli_$(uname -m)-linux" -o /usr/local/bin/start-cli \
     && chmod +x /usr/local/bin/start-cli
 
-# SMB for the NAS skill: Samba's smbclient (lists shares) and the Python
-# smbprotocol library (file access), hash-pinned in skills/nas/requirements.txt.
-# Installed in the image so nothing depends on files in the data volume.
-RUN apt-get update && apt-get install -y --no-install-recommends smbclient \
+# Python libraries for the skills, hash-pinned in skills/requirements.txt
+# (generated from skills/requirements.in) and installed in the image so
+# nothing depends on files in the data volume:
+# - NAS skill: Samba's smbclient (lists shares) + smbprotocol (file access)
+# - PDF skill: OCRmyPDF + Tesseract with English (and OSD for page
+#   rotation). No Ghostscript: OCRmyPDF 17 rasterizes with pypdfium2 and
+#   the skill writes plain PDFs.
+# - cryptography: also imported directly by workspace scripts.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        smbclient tesseract-ocr tesseract-ocr-eng tesseract-ocr-osd \
     && rm -rf /var/lib/apt/lists/*
-COPY skills/nas/requirements.txt /tmp/nas-requirements.txt
+COPY skills/requirements.txt /tmp/python-requirements.txt
 RUN uv pip install --python /usr/bin/python3 --target /opt/python-libs \
         --require-hashes --only-binary :all: --no-cache \
-        -r /tmp/nas-requirements.txt \
-    && rm /tmp/nas-requirements.txt \
-    && PYTHONPATH=/opt/python-libs python3 -c 'import smbclient' \
+        -r /tmp/python-requirements.txt \
+    && rm /tmp/python-requirements.txt \
+    && PYTHONPATH=/opt/python-libs python3 -c 'import smbclient, cryptography, ocrmypdf, pypdfium2' \
+    && PYTHONPATH=/opt/python-libs python3 -m ocrmypdf --version \
+    && tesseract --list-langs \
     && smbclient --version
 ENV PYTHONPATH=/opt/python-libs
 
@@ -80,16 +89,16 @@ RUN ARCH="$(dpkg --print-architecture)" && \
 COPY skills/start-cli/SKILL.md /opt/skills/start-cli/SKILL.md
 # External service skills (loaded when service is enabled via Configure External Services)
 COPY skills/rbw/SKILL.md skills/rbw/creds.py /opt/skills/rbw/
-COPY skills/rbw/getcred /usr/local/bin/getcred
-RUN chmod 755 /usr/local/bin/getcred
+COPY skills/rbw/getcred skills/rbw/gateway-env /usr/local/bin/
+RUN chmod 755 /usr/local/bin/getcred /usr/local/bin/gateway-env
 COPY skills/qdrant/SKILL.md skills/qdrant/qdrant.py /opt/skills/qdrant/
 COPY skills/health/SKILL.md skills/health/health.py /opt/skills/health/
+COPY skills/pdf/SKILL.md skills/pdf/pdf.py /opt/skills/pdf/
 COPY skills/agents/SKILL.md skills/agents/agents.py /opt/skills/agents/
 COPY skills/ollama/SKILL.md /opt/skills/ollama/SKILL.md
 COPY skills/nas/SKILL.md skills/nas/nas.py /opt/skills/nas/
 COPY skills/n8n/SKILL.md /opt/skills/n8n/SKILL.md
 COPY skills/trilium/SKILL.md /opt/skills/trilium/SKILL.md
-COPY skills/stirling/SKILL.md /opt/skills/stirling/SKILL.md
 COPY skills/searxng/SKILL.md /opt/skills/searxng/SKILL.md
 COPY skills/crawl4ai/SKILL.md skills/crawl4ai/crawl4ai.py /opt/skills/crawl4ai/
 COPY skills/ntfy/SKILL.md skills/ntfy/ntfy.py /opt/skills/ntfy/

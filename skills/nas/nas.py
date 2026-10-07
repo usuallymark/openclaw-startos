@@ -24,11 +24,12 @@ import tempfile
 
 _GETCRED = '/usr/local/bin/getcred' if os.path.exists('/usr/local/bin/getcred') else 'getcred'
 
-for _p in ('/opt/python-libs',):
+for _p in ('/opt/python-libs', '/opt/skills/rbw'):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
 import smbclient  # noqa: E402  (smbprotocol)
+from creds import not_configured, use_gateway_env  # noqa: E402
 
 _registered = False
 
@@ -38,6 +39,7 @@ class NasError(RuntimeError):
 
 
 def _getcred(var):
+    use_gateway_env('NAS_HOST')
     r = subprocess.run([_GETCRED, var], capture_output=True, text=True)
     if r.returncode != 0:
         raise NasError(r.stderr.strip() or f'{var} is not configured')
@@ -51,9 +53,10 @@ def _login():
 
 
 def host():
+    use_gateway_env('NAS_HOST')
     h = os.environ.get('NAS_HOST', '').strip()
     if not h:
-        raise NasError('NAS is not configured. Enable it in Configure External Services.')
+        raise NasError(not_configured('NAS_HOST', 'the NAS'))
     return h
 
 
@@ -66,6 +69,7 @@ def _session():
 
 def preferred_shares():
     """Shares listed in Configure External Services (a hint, may be empty)."""
+    use_gateway_env('NAS_HOST')
     raw = os.environ.get('NAS_SHARES', '')
     return [s.strip() for s in raw.split(',') if s.strip()]
 

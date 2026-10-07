@@ -32,9 +32,11 @@ self-hosted tools. Each service can be independently enabled or disabled:
 | **NAS** | Read/write files on your network storage |
 | **n8n** | Trigger automated workflows |
 | **Trilium Notes** | Create and organize research notes |
-| **Stirling PDF** | OCR and process PDF documents |
 | **SearXNG** | Privacy-respecting web search |
 | **Crawl4AI** | Fetch web pages in a real browser and return clean Markdown |
+
+Reading PDFs (text, OCR of scanned pages in English, ingest into Qdrant)
+is built in and needs no external service.
 
 **Configure Vaultwarden first** if you use it — once it's enabled, credential
 fields for other services will automatically offer to fetch from Vaultwarden

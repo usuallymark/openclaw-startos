@@ -21,7 +21,7 @@ import urllib.error
 import urllib.request
 
 sys.path.insert(0, '/opt/skills/rbw')
-from creds import CredentialError, auth_headers  # noqa: E402
+from creds import CredentialError, auth_headers, not_configured, use_gateway_env  # noqa: E402
 
 
 class CrawlError(RuntimeError):
@@ -29,9 +29,10 @@ class CrawlError(RuntimeError):
 
 
 def _base():
+    use_gateway_env('CRAWL4AI_URL')
     base = os.environ.get('CRAWL4AI_URL', '').strip().rstrip('/')
     if not base:
-        raise CrawlError('Crawl4AI is not configured. Enable it in Configure External Services.')
+        raise CrawlError(not_configured('CRAWL4AI_URL', 'Crawl4AI'))
     return base
 
 

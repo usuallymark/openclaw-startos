@@ -20,7 +20,8 @@ same addresses, so its answer matches what the user sees there:
 - **Vault (rbw)**: whether the vault is unlocked (read-only; a locked vault
   unlocks itself on the next credential lookup)
 - each **enabled external service**: Vaultwarden, Ollama, NAS (SMB),
-  n8n, Trilium, Stirling PDF, SearXNG, Crawl4AI
+  n8n, Trilium, SearXNG, Crawl4AI, ntfy
+- **PDF/OCR tools**: Tesseract with English, for the pdf skill
 - **Disk** (`/data`) and **memory**
 - **Memory search**: whether OpenClaw's memory search has working
   embeddings (Configure AI Provider → Memory Embeddings) or is paused and

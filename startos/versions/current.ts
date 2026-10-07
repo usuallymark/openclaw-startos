@@ -1,14 +1,14 @@
 import { IMPOSSIBLE, VersionInfo } from '@start9labs/start-sdk'
 
 export const current = VersionInfo.of({
-  version: '2026.9.4:19',
+  version: '2026.9.4:20',
   releaseNotes: {
-    en_US: `Hide the models this OpenClaw version can't use yet.
+    en_US: `Built-in PDF reading and OCR; Stirling PDF removed.
 
-- Claude Opus 5.5 and Sonnet 5.5 (and GPT-6) are no longer offered in Configure AI Provider, Configure Agents or the agents skill. The bundled OpenClaw (2026.9.4) predates them, and every request to them was rejected by the provider (HTTP 400). They will return when the package moves to a newer OpenClaw.
-- The default Anthropic model is now Claude Opus 4.8 (it was Opus 5.5, which would have failed on every turn).
-- A model already configured stays selectable and is marked "not supported by this OpenClaw version", so opening a form never changes it silently.
-- The daily heartbeat prompt now says to change no other file and not to commit, push or run git: it refreshes MEMORY.md on disk only (MEMORY.md is kept out of git on purpose; a heartbeat turn had committed and pushed it).`,
+- New **pdf** skill, always loaded: extracts the text of a PDF, OCRs pages that are scans (Tesseract, English) with OCRmyPDF, writes searchable copies, and ingests a PDF into a Qdrant collection (page-aware chunks, stable ids, optional replace). Runs inside the container at low CPU priority; no external service needed. The health report gains a "PDF/OCR tools" line.
+- **Stirling PDF is removed** from Configure External Services, the health checks and the skills. An old Stirling setting is ignored and dropped on the next save.
+- Helpers run from a shell that the gateway did not start (a root debug shell, a git hook) now read the service settings from the running gateway instead of saying "not configured": getcred, the NAS, Crawl4AI and ntfy helpers. Errors name the missing variable and where it was looked for. New \`gateway-env COMMAND\` runs any command with the gateway's environment, as user node.
+- \`cryptography\` is now pinned directly in the image's Python libraries (workspace scripts import it), and \`procps\` (ps, pgrep, free) is installed.`,
   },
   migrations: {
     up: async () => {},

@@ -35,7 +35,7 @@ agent restart), the next `rbw get` unlocks it again on its own.
 ## Credentials of configured services: use auth_headers / getcred
 
 For credentials set in Configure External Services (`NAS_USER`, `NAS_PASS`,
-`N8N_KEY`, `TRILIUM_KEY`, `STIRLING_KEY`, `CRAWL4AI_KEY`), never call rbw yourself. These
+`N8N_KEY`, `TRILIUM_KEY`, `CRAWL4AI_KEY`, `NTFY_KEY`), never call rbw yourself. These
 helpers work whether the user chose "Enter manually" or "Fetch from
 Vaultwarden" (the `<VAR>_FROM_VAULT` pointers are resolved for you):
 
@@ -43,12 +43,19 @@ Vaultwarden" (the `<VAR>_FROM_VAULT` pointers are resolved for you):
 import sys; sys.path.insert(0, '/opt/skills/rbw')
 from creds import auth_headers, getcred
 hdrs = auth_headers('X-N8N-API-KEY', 'N8N_KEY')                  # raises if not configured
-hdrs = auth_headers('X-API-KEY', 'STIRLING_KEY', required=False)  # {} if not configured
+hdrs = auth_headers('Authorization', 'NTFY_KEY', required=False, prefix='Bearer ')  # {} if not configured
 getcred('N8N_KEY')                                                # raw value, if a header won't do
 ```
 
 From a shell: `getcred N8N_KEY` (prints without a newline; exit 1 if not
 configured).
+
+These settings live in the environment of the gateway and of the commands
+it runs for you. In a shell that was not started by the gateway (a root
+debug shell, a git hook), `getcred`, `creds.setting('N8N_URL')` and the
+nas/crawl4ai/ntfy helpers read them from the running gateway process
+instead. To run any command exactly as the gateway would (its environment,
+as user node): `gateway-env python3 script.py`.
 
 rbw answers from a local copy of the vault. If a lookup fails or comes back
 empty, getcred runs `rbw sync` once and tries again, so an entry added or
