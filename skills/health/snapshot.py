@@ -42,8 +42,12 @@ def _env():
 
 
 def _run(cmd, timeout=60):
+    # No stdin and a new session (no controlling terminal): start-cli >= 2.1
+    # asks for the StartOS password at a terminal when it is not logged in,
+    # and that prompt must never block a heartbeat or a startup.
     try:
-        r = subprocess.run(cmd, env=_env(), capture_output=True, text=True, timeout=timeout)
+        r = subprocess.run(cmd, env=_env(), capture_output=True, text=True, timeout=timeout,
+                           stdin=subprocess.DEVNULL, start_new_session=True)
         return r.returncode, r.stdout, r.stderr
     except (subprocess.TimeoutExpired, FileNotFoundError) as e:
         return 124, '', f'{e.__class__.__name__}'
