@@ -43,6 +43,10 @@ next turn.
 4. **Write its instructions** in `<workspace>/AGENTS.md` (the helper creates
    a starter file). A spawned agent sees **only AGENTS.md**: not SOUL.md,
    IDENTITY.md, USER.md or MEMORY.md. Everything it must know goes there.
+   Keep the line about long results: OpenClaw cuts a spawned agent's final
+   reply to 4,096 characters (ending "…") before it reaches you, with no
+   setting to change that. Agents that produce long output must write it to
+   a file in their workspace and reply with the path; read the file then.
 5. **Try it**: spawn it on a small task and check the result.
 6. **Save**: if the workspace is a git repository, commit the new files.
    Tell the person it is now listed under Configure Agents.

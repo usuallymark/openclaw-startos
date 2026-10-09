@@ -23,7 +23,6 @@ import {
 import { webchatJson } from './fileModels/webchat.json'
 import { embeddingsJson } from './fileModels/embeddings.json'
 import { watchSimplexAddress, withSimplexMounts } from './simplex'
-import { replaceSnapshot } from './memorySnapshot'
 import { requestSimplexPluginUpgrade } from './actions/configureSimplex'
 import {
   RBW_ENV,
@@ -67,6 +66,17 @@ echo "state-migrate: running openclaw doctor --non-interactive once for OpenClaw
 if openclaw doctor --non-interactive; then
   mkdir -p /data/.startos && printf '%s' "$ver" > "$marker"
   echo "state-migrate: done"
+  # A new OpenClaw may also need the memory search index rebuilt (2026.9.8
+  # paused vector search until it was). Embeddings come from the configured
+  # provider; if it is unreachable now, health.py will say so.
+  if openclaw memory status --agent main 2>/dev/null | grep -q '^Vector search: paused'; then
+    echo "state-migrate: rebuilding the memory search index"
+    if openclaw memory status --index --agent main >/dev/null 2>&1; then
+      echo "state-migrate: memory index rebuilt"
+    else
+      echo "state-migrate: memory index rebuild failed; run: openclaw memory status --index --agent main"
+    fi
+  fi
 else
   echo "state-migrate: openclaw doctor failed (exit $?); retrying at the next start"
 fi
@@ -378,26 +388,6 @@ export const main = sdk.setupMain(async ({ effects }) => {
       },
       requires: [],
     })
-    // OpenClaw (since 2026.9.5) does not migrate an older agent database on
-    // its own: the gateway starts but refuses sessions until
-    // `openclaw doctor` has run with the gateway stopped. Run it once per
-    // OpenClaw version, before the gateway; the marker holds the version it
-    // last succeeded for. A failure does not block startup (it is retried at
-    // the next start).
-    .addOneshot('state-migrate', {
-      subcontainer: openclawSub,
-      exec: {
-        command: ['sh', '-c', STATE_MIGRATE_SCRIPT],
-        user: 'node',
-        env: {
-          HOME: '/data',
-          OPENCLAW_STATE_DIR: '/data/.openclaw',
-          NODE_EXTRA_CA_CERTS: '/etc/ssl/certs/ca-certificates.crt',
-          NO_COLOR: '1',
-        },
-      },
-      requires: ['chown'],
-    })
     // Host mappings (/etc/hosts) and custom CA certs. Independent of
     // Vaultwarden: any internal service may need them. .local names never
     // resolve on StartOS (startd treats them as mDNS), hence /etc/hosts.
@@ -458,6 +448,26 @@ export const main = sdk.setupMain(async ({ effects }) => {
     // pinentry, so login/unlock are non-interactive. Because pinentry is
     // non-interactive, a later `rbw get` from a skill also re-unlocks on
     // its own if the agent died or the lock timeout passed. Never fatal.
+    // OpenClaw (since 2026.9.5) does not migrate an older agent database on
+    // its own: the gateway starts but refuses sessions until
+    // `openclaw doctor` has run with the gateway stopped. Run it once per
+    // OpenClaw version, before the gateway; the marker holds the version it
+    // last succeeded for. A failure does not block startup (it is retried at
+    // the next start).
+    .addOneshot('state-migrate', {
+      subcontainer: openclawSub,
+      exec: {
+        command: ['sh', '-c', STATE_MIGRATE_SCRIPT],
+        user: 'node',
+        env: {
+          HOME: '/data',
+          OPENCLAW_STATE_DIR: '/data/.openclaw',
+          NODE_EXTRA_CA_CERTS: '/etc/ssl/certs/ca-certificates.crt',
+          NO_COLOR: '1',
+        },
+      },
+      requires: ['chown', 'network-setup'],
+    })
     .addOneshot('setup-vault', {
       subcontainer: openclawSub,
       exec: {
@@ -633,46 +643,17 @@ export const main = sdk.setupMain(async ({ effects }) => {
       },
       requires: ['primary'],
     })
+    // Rewrites MEMORY.md's "## Server State Snapshot" section (server state
+    // when start-cli is logged in, else this container's health report). The
+    // daily heartbeat runs the same script, so the agent never edits it.
     .addOneshot('server-state-snapshot', {
       subcontainer: openclawSub,
       exec: {
-        fn: async (subcontainer) => {
-          const execOpts = { user: 'node' as const, env: { HOME: '/data' } }
-          const commands: [string, string[]][] = [
-            ['Server Metrics', ['start-cli', 'server', 'metrics']],
-            ['Server Time', ['start-cli', 'server', 'time']],
-            ['Package List', ['start-cli', 'package', 'list']],
-            ['Package Stats', ['start-cli', 'package', 'stats']],
-            ['Notifications', ['start-cli', 'notification', 'list']],
-            ['Network Gateways', ['start-cli', 'net', 'gateway', 'list']],
-            ['Disk List', ['start-cli', 'disk', 'list']],
-            ['Backup Targets', ['start-cli', 'backup', 'target', 'list']],
-          ]
-
-          const sections: string[] = []
-          for (const [label, cmd] of commands) {
-            const result = await subcontainer.exec(cmd, execOpts)
-            const output =
-              result.exitCode === 0
-                ? String(result.stdout).trim() || '_No output_'
-                : `_Command failed (exit ${result.exitCode}): ${String(result.stderr).trim()}_`
-            sections.push(`### ${label}\n\n\`\`\`\n${output}\n\`\`\``)
-          }
-
-          const stateBlock =
-            '## Server State Snapshot\n\n' +
-            '_This section is rewritten at every restart. Keep notes above it, or under their own `## ` heading._\n\n' +
-            `_Captured at startup: ${new Date().toISOString()}_\n\n` +
-            sections.join('\n\n') +
-            '\n'
-
-          const memoryPath = sdk.volumes.main.subpath(
-            '.openclaw/workspace/MEMORY.md',
-          )
-          const existing = await readFile(memoryPath, 'utf-8').catch(() => '')
-          await writeFile(memoryPath, replaceSnapshot(existing, stateBlock))
-
-          return null
+        command: ['refresh-snapshot', '--reason', 'startup'],
+        user: 'node',
+        env: {
+          HOME: '/data',
+          OPENCLAW_HEALTH_TARGETS: JSON.stringify(healthTargets),
         },
       },
       requires: ['primary', 'check-login'],

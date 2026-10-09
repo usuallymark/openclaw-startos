@@ -92,7 +92,8 @@ COPY skills/rbw/SKILL.md skills/rbw/creds.py /opt/skills/rbw/
 COPY skills/rbw/getcred skills/rbw/gateway-env /usr/local/bin/
 RUN chmod 755 /usr/local/bin/getcred /usr/local/bin/gateway-env
 COPY skills/qdrant/SKILL.md skills/qdrant/qdrant.py /opt/skills/qdrant/
-COPY skills/health/SKILL.md skills/health/health.py /opt/skills/health/
+COPY skills/health/SKILL.md skills/health/health.py skills/health/snapshot.py /opt/skills/health/
+RUN ln -s /opt/skills/health/snapshot.py /usr/local/bin/refresh-snapshot && chmod 755 /opt/skills/health/snapshot.py
 COPY skills/pdf/SKILL.md skills/pdf/pdf.py /opt/skills/pdf/
 COPY skills/agents/SKILL.md skills/agents/agents.py /opt/skills/agents/
 COPY skills/ollama/SKILL.md /opt/skills/ollama/SKILL.md

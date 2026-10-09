@@ -3,8 +3,10 @@
 
 Runs the same checks as the StartOS health list: gateway, Qdrant, webchat,
 vault and every enabled external service, with the same URLs (the package
-passes them in OPENCLAW_HEALTH_TARGETS). Adds disk and memory. Read-only,
-sends no credentials, prints no secrets.
+passes them in OPENCLAW_HEALTH_TARGETS). Adds disk and memory. Read-only and
+prints no secrets. For services with an API key (n8n, Trilium) it also makes
+one authenticated read request to that service, so a wrong or missing key
+shows up here; the key is sent only to that service.
 
     python3 /opt/skills/health/health.py          # short text report
     python3 /opt/skills/health/health.py --json   # machine-readable
@@ -78,6 +80,61 @@ def check_http(t):
     return False, f"unreachable at {t['url']}: {first_line(r.stderr) or f'curl exit {r.returncode}'}"
 
 
+# Services whose key can be checked with one cheap authenticated GET:
+# key -> (credential var, header, prefix, path appended to the target URL).
+# The unauthenticated probe above only proves the server answers (Trilium's
+# ETAPI answers 401 without a token, which is fine there).
+AUTH_CHECKS = {
+    'n8n': ('N8N_KEY', 'X-N8N-API-KEY', '', '/api/v1/workflows?limit=1'),
+    'trilium': ('TRILIUM_KEY', 'Authorization', '', '/app-info'),
+}
+
+
+def _base_url(t):
+    # Targets carry the full probe URL; strip the probe path back off.
+    probe = {'n8n': '/healthz', 'trilium': '/app-info'}.get(t['key'], '')
+    url = t['url']
+    return url[: -len(probe)] if probe and url.endswith(probe) else url.rstrip('/')
+
+
+def check_auth(t, msg):
+    """(ok, message) after an authenticated request, or None to keep the plain result."""
+    spec = AUTH_CHECKS.get(t.get('key'))
+    if not spec:
+        return None
+    var, header, prefix, path = spec
+    sys.path.insert(0, '/opt/skills/rbw')
+    try:
+        from creds import CredentialError, auth_headers
+        hdrs = auth_headers(header, var, required=False, prefix=prefix)
+    except Exception as e:  # vault locked, entry missing, ...
+        return False, f'{msg}, but its API key could not be read ({first_line(str(e))})'
+    if not hdrs:
+        return True, f'{msg}; no API key configured (agents cannot use it)'
+    import urllib.error
+    import urllib.request
+    req = urllib.request.Request(_base_url(t) + path, headers=hdrs)
+    try:
+        with urllib.request.urlopen(req, timeout=8) as r:
+            code = r.status
+            body = r.read(4096)
+    except urllib.error.HTTPError as e:
+        code, body = e.code, b''
+    except (urllib.error.URLError, OSError) as e:
+        return False, f'{msg}, but the authenticated request failed ({getattr(e, "reason", e)})'
+    if 200 <= code < 300:
+        extra = ''
+        if t['key'] == 'trilium':
+            try:
+                extra = f", Trilium {json.loads(body).get('appVersion')}"
+            except ValueError:
+                pass
+        return True, f'reachable, API key accepted (HTTP {code}{extra})'
+    if code in (401, 403):
+        return False, f'reachable, but the API key was rejected (HTTP {code}): check it in Configure External Services / Vaultwarden'
+    return False, f'reachable, but the authenticated request answered HTTP {code}'
+
+
 def check_tcp(t):
     try:
         r = subprocess.run(
@@ -147,6 +204,10 @@ def run_check(t):
     start = time.monotonic()
     try:
         ok, msg = CHECKS[t['kind']](t)
+        if ok and t['kind'] == 'http':
+            authed = check_auth(t, msg)
+            if authed:
+                ok, msg = authed
     except Exception as e:  # never crash the report over one check
         ok, msg = False, f'check error: {e.__class__.__name__}: {first_line(str(e))}'
     return {'key': t['key'], 'label': t['label'], 'ok': ok, 'message': msg,

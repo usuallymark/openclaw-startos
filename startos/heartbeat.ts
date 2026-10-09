@@ -1,12 +1,8 @@
 // Sent verbatim as the heartbeat turn's user message; scratch is appended when set.
-export const HEARTBEAT_PROMPT = `Refresh the 3 most dynamic subsections of the Server State Snapshot in MEMORY.md. Run these commands, then update **only** the corresponding subsections below \`## Server State Snapshot\`. Preserve all other subsections and content in MEMORY.md.
+export const HEARTBEAT_PROMPT = `Daily heartbeat. Run exactly this one command:
 
-1. \`start-cli server metrics\` — update \`### Server Metrics\`
-2. \`start-cli package list\` — update \`### Package List\`
-3. \`start-cli notification list\` — update \`### Notifications\`
+refresh-snapshot --reason heartbeat
 
-Update the timestamp line to \`_Captured at heartbeat: <current timestamp>_\`.
+It rewrites the Server State Snapshot section of MEMORY.md by itself. Do nothing else in this turn: do not edit MEMORY.md or any other file yourself, do not write, save or run any other script or command, and do not run git. If the command fails, do not try to work around it.
 
-Change no other file, and do not commit, push or run any git command: this turn only refreshes MEMORY.md on disk.
-
-Follow the heartbeat monitor scratch context when provided. When done, reply NO_REPLY.`
+If a heartbeat monitor scratch context is attached below, follow it after the command. When done, reply NO_REPLY.`

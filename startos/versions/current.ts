@@ -1,16 +1,14 @@
 import { IMPOSSIBLE, VersionInfo } from '@start9labs/start-sdk'
 
 export const current = VersionInfo.of({
-  version: '2026.9.8:0',
+  version: '2026.9.8:1',
   releaseNotes: {
-    en_US: `OpenClaw 2026.9.8: Claude Opus 5.5, Sonnet 5.5 and GPT-6, subagent fixes.
+    en_US: `Snapshot and heartbeat without improvising, key checks in the health report, long subagent results.
 
-- **First start takes 1–2 minutes longer, once.** OpenClaw 2026.9.8 stores its agent databases in a newer format and will not open the old ones on its own. Before the gateway starts, the package now runs \`openclaw doctor --non-interactive\` once per OpenClaw version to migrate them (your settings are not changed). Make a StartOS backup before updating: the migration cannot be undone.
-- **Claude Opus 5.5, Claude Sonnet 5.5 and GPT-6** are offered again in Configure AI Provider, Configure Agents and the agents skill, and work. The default Anthropic model for a new setup is Claude Opus 5.5 again; an existing choice is not changed.
-- Subagents: inherit the active model at spawn, run concurrently per spawning session, and deliver completed results more reliably (OpenClaw 2026.9.5–9.8).
-- Webchat: the first message in a new conversation could be refused by the new OpenClaw ("session changed before chat.send"); it is now retried once. The webchat's gateway client is updated to 2026.9.8.
-- pdf skill: extracted text has a "--- page N ---" line before each page.
-- GitHub CLI updated to 2.102.0 and start-cli to 2.2.0 (the commands the package runs are unchanged; the start-cli skill lists the 2.x forms of the few commands that changed, e.g. \`server governor\`).`,
+- **Server State Snapshot**: MEMORY.md's snapshot section is now written by a package script (\`refresh-snapshot\`) at every start and by the daily heartbeat, instead of the agent editing it by hand. When start-cli is not logged in to StartOS, the section shows this service's health report instead of eight "Unauthorized" blocks. The heartbeat prompt now says to run only that command: no editing, no scripts, no git (a heartbeat had written its own update script).
+- **Health report** (\`health.py\`): for n8n and Trilium it now checks that the API key is accepted, not just that the server answers. Trilium's ETAPI answering 401 without a token had looked like a problem; now you see "API key accepted (Trilium 0.95.0)", "rejected" or "not configured".
+- **Long subagent results**: OpenClaw cuts a subagent's final reply to 4,096 characters before the main agent sees it (built into OpenClaw, no setting). The agents skill and new agents' starter instructions now say to put longer results in a file and reply with its path.
+- **Upgrades**: after the one-time \`openclaw doctor\` that runs when the OpenClaw version changes, the memory search index is rebuilt automatically if it needs it (on the 2026.9.8 update this was a manual step).`,
   },
   migrations: {
     up: async () => {},

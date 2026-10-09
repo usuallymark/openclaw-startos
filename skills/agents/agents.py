@@ -470,6 +470,9 @@ Describe what it does, and what it must not do.
 
 - Do only the task you were given; report back briefly.
 - If something is unclear or out of scope, say so instead of guessing.
+- Your final reply reaches the main agent cut at about 4,000 characters.
+  For anything longer, write the full result to a file in your workspace
+  and reply with its path and a short summary.
 
 ## Tools
 

@@ -20,7 +20,9 @@ same addresses, so its answer matches what the user sees there:
 - **Vault (rbw)**: whether the vault is unlocked (read-only; a locked vault
   unlocks itself on the next credential lookup)
 - each **enabled external service**: Vaultwarden, Ollama, NAS (SMB),
-  n8n, Trilium, SearXNG, Crawl4AI, ntfy
+  n8n, Trilium, SearXNG, Crawl4AI, ntfy. For **n8n and Trilium** it also
+  makes one authenticated read request, so it says whether the API key is
+  accepted, rejected or not configured (Trilium also reports its version).
 - **PDF/OCR tools**: Tesseract with English, for the pdf skill
 - **Disk** (`/data`) and **memory**
 - **Memory search**: whether OpenClaw's memory search has working
@@ -29,9 +31,20 @@ same addresses, so its answer matches what the user sees there:
 
 Exit status: `0` all OK, `1` something is down, `2` could not run.
 
-It sends no credentials and prints no secrets. A service that answers
-"401/403" counts as reachable (it is up and wants a login), exactly as in
-the StartOS checks.
+It prints no secrets; an API key is sent only to its own service. For the
+plain reachability probe, a service that answers "401/403" counts as
+reachable (it is up and wants a login), exactly as in the StartOS checks.
+
+The memory-search check takes several seconds: that is the `openclaw` CLI
+starting up and opening the agent database, not the embedding server.
+
+## Server State Snapshot in MEMORY.md
+
+The `## Server State Snapshot` section of MEMORY.md is written by
+`refresh-snapshot` (at every start and by the daily heartbeat): server
+details when start-cli is logged in to StartOS, otherwise this health
+report. Never edit that section or write scripts to update it; run
+`refresh-snapshot` if it needs refreshing.
 
 ## What it cannot see
 
