@@ -1,8 +1,10 @@
 # OpenClaw Setup Guide
 
-OpenClaw is an AI agent platform powered by Claude. This package includes
-OpenClaw plus a built-in Qdrant vector database for long-term memory, and
-optional integration with rbw (Vaultwarden) for secure credential management.
+OpenClaw is a self-hosted AI agent gateway. It works with Anthropic (Claude),
+OpenAI, Google Gemini, xAI, or a local model server (Ollama, vLLM, llama.cpp).
+This package includes OpenClaw plus a built-in Qdrant vector database for
+long-term memory, and optional integrations with your own self-hosted services
+(Vaultwarden via rbw, Ollama, a NAS, n8n, Trilium, SearXNG, Crawl4AI, ntfy).
 
 ---
 
@@ -34,6 +36,7 @@ self-hosted tools. Each service can be independently enabled or disabled:
 | **Trilium Notes** | Create and organize research notes |
 | **SearXNG** | Privacy-respecting web search |
 | **Crawl4AI** | Fetch web pages in a real browser and return clean Markdown |
+| **ntfy** | Send push notifications to your phone |
 
 Reading PDFs (text, OCR of scanned pages in English, ingest into Qdrant)
 is built in and needs no external service.
@@ -45,7 +48,22 @@ instead of requiring manual entry.
 ### 4. Open the Web Interface
 
 Find the OpenClaw interface address under **Interfaces** in the StartOS UI.
-Log in with the gateway password you set in Step 1.
+Log in with the gateway password you set in Step 1. The page then waits at
+"Approve this browser": run the **Approve Browser Pairing** action once, and
+the page connects on its own.
+
+### 5. Memory search (optional)
+
+In **Configure AI Provider → Memory Embeddings**, choose where the agent's
+memory embeddings come from (an Ollama server, OpenAI or Gemini). Without it,
+the agent's memory search uses keywords only.
+
+### 6. Giving the agent control of StartOS (optional, think first)
+
+**Login to StartOS** lets the agent run `start-cli` against this server:
+start and stop services, read logs, change settings. That is root-equivalent
+control, reachable by anything that can talk to the agent. It is off unless
+you run the action, and **Revoke StartOS Access** turns it off again.
 
 ---
 
@@ -83,9 +101,8 @@ OpenClaw looks up credentials by entry name and field. Use these exact names:
 | Trilium | `Trilium` | `API_Key` |
 | NAS username | `NAS` | `username` |
 | NAS password | `NAS` | `Password` |
-| Gitea | `Gitea` | `API_Key` |
-| Anthropic | `Anthropic` | `API_Key` |
-| Qdrant | `Qdrant` | `API_Key` |
+| Crawl4AI | `Crawl4AI` | `API_Key` |
+| ntfy | `ntfy` | `API_Key` |
 
 ---
 

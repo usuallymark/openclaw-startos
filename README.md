@@ -11,8 +11,17 @@
 
 [OpenClaw](https://github.com/openclaw/openclaw) is a self-hosted AI agent gateway: a web chat and control panel in front of an LLM, reachable from messaging channels, with a workspace and memory of its own. This package runs the gateway, wires it to either a cloud provider or a local model server on the same box, and can — if you ask it to — give the agent administrative control of StartOS itself.
 
+**This is a fork of the community package** ([Start9-Community/openclaw-startos](https://github.com/Start9-Community/openclaw-startos)). It keeps the package id `openclaw`, so sideloading it replaces the community package on the same server (your `/data` is kept). On top of the community package it adds:
+
+- a bundled **Qdrant** vector database (its own volume) and a skill for it;
+- **helper agents** the main agent can spawn, managed from an action (Configure Agents) or by the agent itself;
+- **Configure External Services**: optional skills for Vaultwarden (via `rbw`), Ollama, an SMB NAS, n8n, Trilium, SearXNG, Crawl4AI and ntfy, plus host mappings and a custom CA for internal HTTPS services;
+- a **mobile webchat** with one profile per person (optional);
+- a built-in **pdf** skill (text extraction and OCR of scanned pages) and a **health** skill;
+- **memory embeddings** settings and a daily server snapshot in the agent's memory.
+
 - **Upstream repo:** <https://github.com/openclaw/openclaw>
-- **Wrapper repo:** <https://github.com/Start9-Community/openclaw-startos>
+- **This package:** <https://github.com/usuallymark/openclaw-startos> (releases carry the `.s9pk` files for sideloading)
 
 ---
 
@@ -43,54 +52,72 @@ One image, built here.
 | Architectures | x86_64, aarch64                     |
 | Command       | The gateway, bound to the LAN       |
 
-| Subcontainer   | Purpose                                  |
-| -------------- | ---------------------------------------- |
-| `openclaw-sub` | The only daemon — the one to `attach` to |
+| Subcontainer   | Purpose                                                            |
+| -------------- | ------------------------------------------------------------------ |
+| `openclaw-sub` | The gateway, the webchat and the oneshots — the one to `attach` to |
+| `qdrant-sub`   | Qdrant, from the official image                                    |
 
-**The image also installs `start-cli`**, pinned to a version by a build argument. That binary is what lets the agent administer the server when you grant it access, and it is why the container needs StartOS's root certificate.
+**The image also installs `start-cli`**, pinned to a version by a build argument. That binary is what lets the agent administer the server when you grant it access, and it is why the container needs StartOS's root certificate. It also carries the skills (`/opt/skills`), the GitHub CLI, `rbw`, Python libraries for the skills (`/opt/python-libs`, hash-pinned in `skills/requirements.txt`) and Tesseract for OCR.
 
-Two oneshots run before the daemon, and three after it:
+Daemons: `qdrant`, `primary` (the gateway), and `webchat` while it is enabled.
 
-| Oneshot                 | When   | Purpose                                                    |
-| ----------------------- | ------ | ---------------------------------------------------------- |
-| `install-root-ca`       | Before | Installs StartOS's root CA so the container trusts the OS  |
-| `chown`                 | Before | Hands `/data` to the unprivileged user the gateway runs as |
-| `check-login`           | After  | Raises a task if `start-cli` is not authenticated          |
-| `check-simplex-plugin`  | After  | Brings the SimpleX plugin up to the pinned version         |
-| `server-state-snapshot` | After  | Writes a server inventory into the agent's memory file     |
+Five oneshots run before the gateway, and three after it:
+
+| Oneshot                 | When   | Purpose                                                                                            |
+| ----------------------- | ------ | -------------------------------------------------------------------------------------------------- |
+| `install-root-ca`       | Before | Installs StartOS's root CA so the container trusts the OS                                          |
+| `chown`                 | Before | Hands `/data` to the unprivileged user the gateway runs as                                         |
+| `network-setup`         | Before | Writes custom host mappings to `/etc/hosts` and installs a custom CA (Configure External Services) |
+| `state-migrate`         | Before | Once per OpenClaw version: `openclaw doctor --non-interactive` to migrate the agent databases      |
+| `setup-vault`           | Before | Logs `rbw` in to Vaultwarden and unlocks it, if enabled                                            |
+| `check-login`           | After  | Raises a task if `start-cli` is not authenticated                                                  |
+| `check-simplex-plugin`  | After  | Brings the SimpleX plugin up to the pinned version                                                 |
+| `server-state-snapshot` | After  | Writes a server inventory (or, when not logged in, a health report) into `MEMORY.md`               |
+
+**The first start after an OpenClaw update takes 1–2 minutes longer**, once: newer OpenClaw releases refuse to open agent databases written by older ones until `doctor` has migrated them with the gateway stopped. A marker (`/data/.startos/openclaw-doctor-version`) is written only on success; a failure is logged and retried at the next start and never blocks it.
 
 **The gateway starts unconfigured on purpose.** It is launched with the flag that allows that, so the interface comes up and shows you what is missing rather than refusing to start.
 
 ## Volume and Data Layout
 
-One volume, holding the agent and everything it knows.
+Two volumes.
 
-| Volume | Mount Point | Purpose                 |
-| ------ | ----------- | ----------------------- |
-| `main` | `/data`     | The agent's entire home |
+| Volume   | Mount Point       | Purpose                     |
+| -------- | ----------------- | --------------------------- |
+| `main`   | `/data`           | The agent's entire home     |
+| `qdrant` | `/qdrant/storage` | Qdrant's vector collections |
 
-| Path                          | Written by  | Holds                                   |
-| ----------------------------- | ----------- | --------------------------------------- |
-| `.openclaw/openclaw.json`     | Actions     | The gateway and agent configuration     |
-| `.openclaw/workspace/`        | Both        | The agent's identity, memory, and files |
-| `.startos/auth-profiles.json` | An action   | Provider API keys                       |
-| `.startos/config.yaml`        | The package | Where `start-cli` points                |
-| `simplex.json`                | An action   | Whether SimpleX file exchange is on     |
+| Path                               | Written by  | Holds                                                    |
+| ---------------------------------- | ----------- | -------------------------------------------------------- |
+| `.openclaw/openclaw.json`          | Actions     | The gateway and agent configuration                      |
+| `.openclaw/workspace/`             | Both        | The agent's identity, memory, and files                  |
+| `.openclaw/agents/<id>/`           | OpenClaw    | Per-agent state database (sessions, auth, memory index)  |
+| `.openclaw/external-services.json` | An action   | Configure External Services settings                     |
+| `.openclaw/rbw/`                   | The package | `rbw` config, cache and the saved master password (0600) |
+| `.openclaw/webchat/`               | Both        | Webchat profiles, its state and file hand-offs           |
+| `.startos/auth-profiles.json`      | An action   | Provider API keys                                        |
+| `.startos/embeddings.json`         | An action   | Memory-embeddings provider choice                        |
+| `.startos/config.yaml`             | The package | Where `start-cli` points                                 |
+| `.startos/openclaw-doctor-version` | The package | Last OpenClaw version `state-migrate` ran for            |
+| `simplex.json`                     | An action   | Whether SimpleX file exchange is on                      |
 
-**`SOUL.md` and `IDENTITY.md` are re-copied from the image on every install and upgrade**, so an upstream revision of the agent's own instructions reaches an existing install. **`MEMORY.md` is not** — it is seeded once and then left alone, because it is what the agent has accumulated.
+**`SOUL.md`, `IDENTITY.md` and `MEMORY.md` are seeded once** from the image when missing, and then belong to you: updates never replace them (they may live in your own git repository).
 
-**Every start rewrites one section of `MEMORY.md`**: a snapshot of the server's metrics, packages, notifications, gateways, disks, and backup targets. It is how the agent knows what it is running on — and it means the memory file contains an inventory of your server. **A daily heartbeat refreshes the three most volatile subsections** — metrics, packages, notifications. Its instructions are the heartbeat prompt in the configuration (`agents.defaults.heartbeat`), written by init and delivered nowhere (`target: none`): OpenClaw runs heartbeat instructions from its database, never from a workspace `HEARTBEAT.md`, and the default delivery route skips the run entirely until a chat channel has an owner.
+**Every start rewrites one section of `MEMORY.md`** (`## Server State Snapshot`) with `refresh-snapshot`: when `start-cli` is logged in, the server's metrics, packages, notifications, gateways, disks and backup targets; otherwise the health report. It is how the agent knows what it is running on — and it means the memory file can contain an inventory of your server. **A daily heartbeat runs the same command.** Its instructions are the heartbeat prompt in the configuration (`agents.defaults.heartbeat`), rewritten by init on every install and update and delivered nowhere (`target: none`).
 
 ## File Models
 
-Four models, each owning a different boundary.
+Seven models, each owning a different boundary.
 
-| File                 | Format | Modelled                | Written by                         |
-| -------------------- | ------ | ----------------------- | ---------------------------------- |
-| `openclaw.json`      | JSON   | Yes — `FileHelper.json` | Actions, init, and OpenClaw itself |
-| `auth-profiles.json` | JSON   | Yes — `FileHelper.json` | An action                          |
-| `config.yaml`        | YAML   | Yes — `FileHelper.yaml` | `main` and init                    |
-| `simplex.json`       | JSON   | Yes — `FileHelper.json` | An action                          |
+| File                     | Format | Written by                         |
+| ------------------------ | ------ | ---------------------------------- |
+| `openclaw.json`          | JSON   | Actions, init, and OpenClaw itself |
+| `auth-profiles.json`     | JSON   | Configure AI Provider              |
+| `embeddings.json`        | JSON   | Configure AI Provider              |
+| `external-services.json` | JSON   | Configure External Services        |
+| `webchat/config.json`    | JSON   | Configure Webchat                  |
+| `config.yaml`            | YAML   | `main` and init                    |
+| `simplex.json`           | JSON   | Configure SimpleX                  |
 
 **The main configuration is shared with the application, not owned by the package.** OpenClaw edits it too — changing the model from inside the chat writes to the same file — which is why the dependency declaration reads it reactively rather than trusting the action to be the only writer.
 
@@ -102,7 +129,7 @@ The `start-cli` configuration is rewritten at every start with the server's curr
 
 ## Dependencies
 
-Four, all optional, and **each declared only while it is selected**.
+Four, all optional, and **each declared only while it is selected**. (Qdrant is bundled, not a dependency. The external services in Configure External Services are reached by URL and are not StartOS dependencies either.)
 
 | Dependency               | Required             | Kind      | Why                           |
 | ------------------------ | -------------------- | --------- | ----------------------------- |
@@ -121,21 +148,24 @@ SimpleX is different in kind: enabling it mounts the bridge's file-exchange dire
 
 ## Network Access and Interfaces
 
-One interface.
+Up to two interfaces.
 
-| Interface | Id   | Type | Port  | Description                    |
-| --------- | ---- | ---- | ----- | ------------------------------ |
-| Web UI    | `ui` | ui   | 18789 | The chat and the control panel |
+| Interface | Id        | Type | Port  | Description                                       |
+| --------- | --------- | ---- | ----- | ------------------------------------------------- |
+| Web UI    | `ui`      | ui   | 18789 | The chat and the control panel                    |
+| Webchat   | `webchat` | ui   | 18800 | Mobile webchat; exported only while it is enabled |
 
-Bound on the `ui-multi` MultiHost over HTTP and not masked.
+The Web UI is bound on the `ui-multi` MultiHost over HTTP and not masked. Qdrant (6333) is bound to the internal bridge only and never exported.
 
 **The gateway password is the gate, and each browser is approved once.** OpenClaw's origin checking is relaxed for the reason given under [File Models](#file-models); its device pairing is not, and cannot be. A browser that passes the password is held at "Approve this browser" until the Approve Browser Pairing action admits it, and it then keeps a per-device credential until it is removed in the Web UI's device list. So anyone who can reach this address, knows the password, and can run that action has the agent — and, if StartOS access has been granted, the server. A `critical` task blocks the service from starting until that password is set, so there is no window where it is reachable without one.
 
-Outbound, the gateway talks to whichever provider is configured, to any messaging channel you connect, and — for local backends and SimpleX — to the sibling service over the internal bridge.
+Outbound, the gateway talks to whichever provider is configured, to any messaging channel you connect, to the external services you enable, and — for local backends and SimpleX — to the sibling service over the internal bridge.
+
+**The webchat has its own gate**: anyone who can reach its address can open a profile that has no PIN. Give each profile a PIN if the address is reachable by others.
 
 ## Installation and First-Run Flow
 
-Install creates the agent's directory structure, seeds its workspace from the image, points `start-cli` at the server, and pins the gateway settings. It then raises **two `critical` tasks**: set a gateway password, and configure an AI provider.
+Install creates the agent's directory structure, seeds its workspace from the image, points `start-cli` at the server, and pins the gateway settings. It then raises **two `critical` tasks**: set a gateway password, and configure an AI provider. Nothing in Configure External Services is required: with none of it set up, the agent still has the pdf, health, qdrant, agents and start-cli skills.
 
 The first visit to the Web UI from any browser ends at "Approve this browser" after the password; running **Approve Browser Pairing** admits it and the page connects on its own.
 
@@ -145,11 +175,11 @@ Once running, the gateway comes up on its interface and two more things happen a
 
 **Granting StartOS access is opt-in and deliberately not a critical task.** It is offered only after the gateway is up and only because the agent could not authenticate — see the action below before running it.
 
-**Updating from an older release migrates OpenClaw's state.** The migration moves the auth-profiles file out of the agent directory, then runs OpenClaw's own `doctor --fix --non-interactive` and its session import against the stopped service — the same repair OpenClaw's updater runs. A nonzero exit fails the update with doctor's output, leaves the data version where it was, and re-runs the migration on the next init; the Repair OpenClaw action is the manual route for anything doctor reports it cannot fix on its own.
+**Updating migrates OpenClaw's state** through the `state-migrate` oneshot (above), before the gateway starts. If vector memory search is paused afterwards, it also rebuilds the main agent's memory index (this needs a reachable embedding provider; without one, keyword memory search still works). The Repair OpenClaw action is the manual route for anything doctor cannot fix on its own. **Make a StartOS backup before updating**: the migration cannot be undone.
 
 ## Actions
 
-Nine actions.
+Twelve actions.
 
 ### Set Gateway Password
 
@@ -167,6 +197,28 @@ Chooses the backend — a cloud provider with an API key, or a local model serve
 - **Cost:** the service restarts, and the dependency set changes to match.
 - **Repeat safety:** idempotent, pre-filled with the current selection.
 - **Choosing a local backend makes that package a required dependency**; choosing a cloud provider removes it.
+- **Memory Embeddings** chooses the provider for the agent's vector memory search (an Ollama server, OpenAI or Gemini). Left unset, OpenClaw falls back to keyword search.
+- **Local Chat Models for Agents** offers the tool-capable models on an Ollama server to helper agents.
+
+### Configure Agents
+
+Adds, changes or removes the helper agents the main agent can spawn: model (cloud, or a model on your Ollama server), tool profile, skills, and who may start them. The agent can do the same through its `agents` skill. A spawned agent sees only its own `AGENTS.md`.
+
+- **Cost:** none; changes apply without a restart.
+- **Note:** OpenClaw cuts a spawned agent's final reply to 4,096 characters. Agents that produce long results should write them to a file and reply with the path (the starter `AGENTS.md` says so).
+
+### Configure External Services
+
+Connects the agent to self-hosted tools, each optional and independent: Vaultwarden (via `rbw`; other services can then fetch their credentials from it), Ollama, an SMB NAS, n8n, Trilium, SearXNG, Crawl4AI and ntfy. Also: custom host mappings (StartOS never resolves `.local` names inside a service) and a custom CA certificate for internal HTTPS.
+
+- **What it changes:** `external-services.json`; each enabled service loads its skill and gets a health check.
+- **Cost:** the service restarts.
+
+### Configure Webchat
+
+Turns the mobile webchat on or off and manages one profile per person (name, color, greeting, preset conversations, optional PIN).
+
+- **Cost:** the service restarts; the Webchat interface appears or disappears.
 
 ### Connect Telegram
 
@@ -219,7 +271,7 @@ Runs one of OpenClaw's own maintenance commands against the stopped service and 
 
 ## Tasks
 
-Three, two of them blocking.
+Three, two of them blocking (a SimpleX plugin task may also appear when the bundled OpenClaw needs a newer plugin).
 
 | Task                  | Severity    | Raised when                                       | Cleared when    |
 | --------------------- | ----------- | ------------------------------------------------- | --------------- |
@@ -231,21 +283,21 @@ Three, two of them blocking.
 
 ## Health Checks
 
-One check, on the only daemon.
+| Check           | Displayed as             | Method                                                         |
+| --------------- | ------------------------ | -------------------------------------------------------------- |
+| `primary`       | "Web Interface"          | The gateway's `/healthz` on its own bridge address (40s grace) |
+| `qdrant`        | "Qdrant Vector Database" | Port open, then Qdrant's `/readyz`                             |
+| `webchat`       | "Webchat"                | Its `/healthz`, while enabled                                  |
+| `vault`         | "Vault (rbw)"            | A full unlock every 5 minutes, while Vaultwarden is enabled    |
+| `ext-<service>` | The service's name       | Reachability every minute, for each enabled external service   |
 
-| Check     | Displayed as    | Method                                              | Grace |
-| --------- | --------------- | --------------------------------------------------- | ----- |
-| `primary` | "Web Interface" | The gateway's `/healthz` answers on its own address | 40s   |
-
-**It queries the gateway over the internal bridge** using the service's own resolved address rather than a hostname, so it survives the address changing and does not depend on name resolution between containers.
-
-It reports that the gateway is serving. **It says nothing about the model**: a wrong API key, a rate limit, or a local backend that is running but not loaded all show a green check and an error in the chat.
+The external checks test reachability only; the `health` skill (`/opt/skills/health/health.py`) also tests the n8n and Trilium API keys and memory search. **None of them says anything about the model**: a wrong API key, a rate limit, or a local backend that is running but not loaded all show green checks and an error in the chat.
 
 ## Backups and Restore
 
-The `main` volume is copied wholesale — `sdk.Backups.ofVolumes('main')`. That is the whole agent: configuration, provider API keys, the gateway password, channel tokens, the workspace, and the accumulated memory.
+Both volumes are copied wholesale — `sdk.Backups.ofVolumes('main', 'qdrant')`. That is the whole agent: configuration, provider API keys, the gateway password, channel tokens, the workspace, the accumulated memory, and the vector collections.
 
-**The backup contains every credential the agent holds**, in recoverable form: provider keys, the Telegram bot token, and — if StartOS access was granted — the session that administers your server. Treat it accordingly.
+**The backup contains every credential the agent holds**, in recoverable form: provider keys, the Telegram bot token, the saved Vaultwarden master password and any manually entered service keys, and — if StartOS access was granted — the session that administers your server. Treat it accordingly.
 
 It also contains the server snapshot written into memory, which is an inventory of what is installed on this box.
 
@@ -260,8 +312,9 @@ A restored instance comes back configured and remembers what it knew. The `start
 5. **The agent's memory contains a server inventory**, rewritten every start.
 6. **Local backends must be running and healthy**, or the gateway has no model.
 7. **A cloud provider sends your conversations to that provider.** Only a local backend keeps them on the box.
-8. **`SOUL.md` and `IDENTITY.md` are overwritten on every upgrade**, and the heartbeat prompt is rewritten on every init; edits to them do not survive. Put your own heartbeat checklist in the monitor scratch (`openclaw cron scratch`), which is appended to the prompt and left alone.
-9. **One agent.** The package configures the default agent only.
+8. **The heartbeat prompt is rewritten on every init**; edits to it do not survive. Put your own heartbeat checklist in the monitor scratch (`openclaw cron scratch`), which is appended to the prompt and left alone.
+9. **Spawned agents' final replies are capped at 4,096 characters** by OpenClaw.
+10. **Same package id as the community package**: installing this one replaces it.
 
 ---
 
@@ -274,14 +327,23 @@ architectures:
   - x86_64
   - aarch64
 subcontainers:
-  - openclaw-sub # gateway runs as `node`; oneshots that chown run as root
+  - openclaw-sub # gateway + webchat run as `node` (HOME=/data); oneshots that chown run as root
+  - qdrant-sub
 volumes:
   main: /data # HOME and OPENCLAW_STATE_DIR both live here
+  qdrant: /qdrant/storage
 file_models:
   - .openclaw/openclaw.json # gateway + agent config; OpenClaw writes it too
+  - .openclaw/external-services.json
+  - .openclaw/webchat/config.json
   - .startos/auth-profiles.json # provider API keys; package-owned, not OpenClaw's agent dir
+  - .startos/embeddings.json
   - .startos/config.yaml # start-cli host, rewritten each start
   - simplex.json # whether SimpleX file exchange is enabled
+helpers_in_container:
+  - gateway-env CMD # run CMD with the running gateway's environment, as node
+  - refresh-snapshot # rewrite MEMORY.md's server snapshot
+  - getcred VAR # print a configured credential (manual value or Vaultwarden via rbw), e.g. getcred NAS_PASS
 startos_managed_env_vars:
   - HOME
   - OPENCLAW_STATE_DIR
@@ -297,9 +359,13 @@ dependencies:
   - simplex-websocket-bridge # optional, only while file exchange is enabled
 interfaces:
   ui: { type: ui, port: 18789 } # gateway password + one-time browser approval (approve-devices)
+  webchat: { type: ui, port: 18800 } # only while enabled; per-profile PIN
 actions:
   - set-password
   - configure-api-credentials
+  - configure-agents
+  - configure-external-services
+  - configure-webchat
   - connect-telegram
   - connect-whatsapp # only-running
   - configure-simplex
@@ -313,4 +379,8 @@ tasks:
   - { action: login-to-os, severity: important } # raised at start when unauthenticated
 health_checks:
   - primary # checkWebUrl against the service's own bridge address; says nothing about the model
+  - qdrant
+  - webchat # while enabled
+  - vault # while Vaultwarden is enabled
+  - ext-* # one per enabled external service, reachability only
 ```

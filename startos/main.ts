@@ -74,7 +74,7 @@ if openclaw doctor --non-interactive; then
     if openclaw memory status --index --agent main >/dev/null 2>&1; then
       echo "state-migrate: memory index rebuilt"
     else
-      echo "state-migrate: memory index rebuild failed; run: openclaw memory status --index --agent main"
+      echo "state-migrate: memory index not rebuilt: no embedding provider is configured or reachable. Keyword memory search still works. To enable vector search, set Configure AI Provider > Memory Embeddings, then run: openclaw memory status --index --agent main"
     fi
   fi
 else
